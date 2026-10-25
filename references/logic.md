@@ -1,0 +1,68 @@
+# Preflight — decision logic
+
+## 1. Architecture
+- **Pure engine** (`engine.js`) → normalise → evaluate → recommend → confirm. Same code runs in Node tests and the browser, so tests prove what judges see.
+- **Chat** (`chat.js`) only produces a booking object; it reuses the same engine for checks.
+- **No AI model, no server.** Deterministic, instant, works offline on any static host, explainable.
+
+## 2. Reading uploaded files
+1. Each sheet → array of rows (SheetJS, `raw:true`; CSV read as text so `05-11-2026` isn't turned into 11 May).
+2. **Sheet detection:** by headers first (Booking ID + SKU/Unit price = Items; Booking ID + Seller/Pallets = Bookings), then by sheet name. Supports one workbook or two files.
+3. **Header row:** first row in the top 15 containing "Booking ID" (works with or without the title row).
+4. **Column mapping by normalised header name** (lower-case, letters/digits only) with aliases → column order doesn't matter. Missing columns → Amber notice, values treated blank.
+5. **Skip blank rows.** Skip the grey template example row (BK-001 Northfield Goods / MUG-01) only if it is the first data row *and* matches the template exactly (toggle in UI).
+6. **Item → booking match:** trimmed, upper-cased IDs. Unmatched item rows → "orphan" notice listing ID, row, SKU. Duplicate Booking IDs → Red data issue.
+7. If an "Expected results" sheet exists, the app compares statuses (test harness).
+
+## 3. Normalisation (never throws)
+| Field | Logic |
+|---|---|
+| Numbers | Strip £, GBP, kg, commas, spaces. Blank → missing; non-numeric → "isn't a number"; ≤0 → invalid; counts (pallets, cartons, qty, units/carton) must be whole. |
+| Dates | Excel serial → date; ISO `YYYY-MM-DD`; `DD-MM-YYYY`, `/` or `.`, 2-digit year → 20xx; "5 Nov 2026", "Nov 5 2026". Round-trip validated; `31-02` or US `11-31` rejected. |
+| Countries | Aliases: UK/GB/England → United Kingdom; Holland/NL → Netherlands; PRC → China; Türkiye → Turkey. |
+| Cities | Must be on route lists; city decides country; city/country mismatch → Red. |
+| Priority / destination type / Yes-No | Keyword mapping ("cheap", "fulfilment centre", "yes "). Unknown priority → Balanced + Amber note. Blank appointment for a warehouse → treated as No. |
+| HS code | Number → integer string; text keeps leading zeros; "HS" prefix removed; dots/spaces removed before counting digits; letters flagged. |
+
+## 4. Rulebook
+| Rule | Pass condition / edge handling | Fix text |
+|---|---|---|
+| R-01 HS (Red) | ≥6 digits, no letters. 5-digit *numeric* cell → hint "Excel dropped the leading zero". >10 digits → advisory only. | Suggested code from the item name (~75 product patterns, specific before general: tea towel 630291 before towel 630260). Never auto-applied; shown in the fix text, a one-click "Use 691200" button, the invoice table and the live sheet. No match → link to the UK Trade Tariff. |
+| R-02 Value (Red) | `|declared − Σqty×price| / Σ ≤ 1%` (inclusive). | Set declared to Σ; if gap = one item's line → "item left out / counted twice"; ×10 gap → "misplaced zero". |
+| R-03 Packing (Red) | Per item `units/carton × cartons = qty` exactly. | Offer qty = upc×cartons, or cartons = qty÷upc only if whole. |
+| R-04 Cartons (Red) | Booking cartons = Σ item cartons. | Set to Σ; name the item whose cartons equal the gap. |
+| R-05 Pallet weight (Red) | gross÷pallets ≤ max of the **chosen** carrier (priority pick, or seller override); equal passes. | Price every escape: switch carrier as-is, re-pack chosen carrier onto ⌈gross÷max⌉ pallets, or re-pack + switch; order by seller priority. Over 750 kg = over every carrier. |
+| R-06 DG (Red) | Keyword scan of description + SKU. **Definite** (lithium, Li-ion, power bank, vape, aerosol, hairspray, perfume, nail polish, petrol, acetone, hand sanitiser…) → Red. **Possible** (battery, Bluetooth speaker, phone, "spray", paint, reed diffuser, spirits) → Amber "confirm". Negations ignored: "batteries not included", "battery-free", "non-aerosol", "alcohol-free". Accessories excluded (phone case, spray bottle, "lighter weight"). | Remove item; these road services carry no ADR dangerous goods. |
+| R-07 Gross (Amber) | gross ≥ Σ unit weight×qty (equal passes, advisory "looks like net weight"). | Re-weigh; expect net + ≈25 kg/pallet. |
+| R-08 Appointment (Amber) | Warehouse ⇒ Yes. Business address ⇒ N/A. | Book slot for the ETA date. |
+| R-09 Origin (Amber) | Every item has country of origin. | Add where made (not shipped from). |
+| R-10 Date (Amber) | ready ≥ today (today passes, browser date). | Update to today or later; ETA counted from today. |
+
+**Statuses:** pass / fail / check (needs confirmation) / cannot (data missing) / na. **Overall:** any Red (rule or data) → Red "Hold"; else any Amber → "Check"; else Green "Cleared".
+
+**Data-quality checks (labelled "Data"):** missing required fields, non-numeric, zero/negative, fractional counts, unknown city/country/route, city–country mismatch, non-GBP, no items, duplicate Booking ID, duplicate SKU, missing SKU/description, orphan items.
+
+## 5. Carrier recommendation
+Cost = price per pallet × pallets (route by destination country).
+- **Cheapest:** cost ↑, then transit ↑, on-time ↓.
+- **Fastest:** transit ↑, then on-time ↓, cost ↑.
+- **Most reliable:** on-time ↓, then transit ↑, cost ↑.
+- **Balanced:** start at cheapest; step to a faster option only if `% transit saved ≥ % cost added`. A→B: +22–25% cost for −40% time ✔; B→C: +55–60% cost for −33% ✘ → **B on all routes**. Reason text shows the maths.
+- Seller can override ("switch to carrier B"); changing priority clears the override.
+- If chosen fails R-05 → report shows "over limit", recommended fix with button; file table shows `A → B · £660`.
+
+## 6. Timeline & confirmation
+Collection = ready date (today if past), moved to Monday if weekend; delivery = collection + transit calendar days, moved off weekends. Confirmation: plain sentence of what/where/carrier/cost/ETA + ordered next steps (fix reds → carrier booking → commercial invoice & export declaration → label cartons/pallets → ready at origin → appointment matching ETA → EU import clearance & tracking). Confirm is blocked while Red; Amber confirms with warning; reference `PF-######`.
+
+## 7. Conversation engine
+- **Masking pipeline:** each recognised span is blanked so numbers aren't reused: carrier override → dates → declared value → total cartons → pallets (deltas before absolutes) → explicit gross weight → item mentions → per-item details → leftover kg → cities/type/appointment/priority/seller.
+- **Item mentions:** `<qty> <noun phrase>`; ignore units (kg, ml, pallets, days, months…), numbers after £/HS/SKU, decimals. "pallets of t-shirts", "Cushions — 600", "ship candles to Paris" also create items.
+- **Per-item zones:** text between one mention and the next belongs to that item (price, units/carton, "N cartons of M", unit weight "each"/grams, HS, "made in X").
+- **Existing item match** by word stems (mugs ↔ ceramic mugs) → update, not duplicate. Changing qty clears *derived* cartons and re-derives.
+- **Derivation:** any 2 of qty / units per carton / cartons → the third (only if whole). Booking cartons & declared value = item sums unless stated.
+- **HS suggestion in chat:** the HS question names the usual code and offers a "Use 340600" chip; after "don't know" the code is suggested again and "use 340600" accepts it at any point.
+- **Pending question:** bare answers ("500", "Leeds", "yes", "don't know") fill the asked field. "Don't know" HS/origin is accepted then flagged.
+- **Questions order:** destination → origin → items (lists all missing per item) → pallets → gross (shows net goods weight) → ready date → destination type → appointment (warehouse only) → priority → seller name.
+- **Intents:** reset, confirm, summary ("what's wrong?"), help. Unserved cities (Munich, Bristol, Spain) → redirect note.
+- **After complete:** every change re-runs checks and lists the diff ("R-05 now passes"). One-click fixes in chat send the equivalent sentence, so chat history stays truthful.
+- **Live panel:** booking sheet with "needed"/"calc" markers; while incomplete, unasked fields show "waiting", not false Reds.
