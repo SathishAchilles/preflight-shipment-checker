@@ -989,7 +989,51 @@ function confirmation(ev, reviewed = 0) {
   return { head, lines, next };
 }
 
-const PF = { CARRIERS, RULES, PRICE_NOTE, CITY_COUNTRY, ORIGIN_CITIES, COO_LIST, PRIORITIES, EXAMPLE_BOOKING, EXAMPLE_ITEM,
+// ---------- Outcomes (reporting only; never changes a booking's status) ----------
+// Where a Red booking would most likely be stopped, in journey order. Each booking counts once, at its first stop.
+const OUTCOME_STAGES = [
+  { id: 'booking',    label: 'Bounced back as filed',     where: 'before booking — the details are missing or contradict each other', rules: [] },
+  { id: 'collection', label: 'Refused at collection',     where: 'at collection — the carrier refuses the pallet or the goods', rules: ['R-05', 'R-06'] },
+  { id: 'border',     label: 'Customs hold',              where: 'at the border — the commercial invoice does not hold up', rules: ['R-01', 'R-02'] },
+  { id: 'receipt',    label: 'Rejected at delivery',      where: 'at delivery — the counts do not match what was declared', rules: ['R-03', 'R-04'] },
+];
+function firstStop(ev) {
+  if (ev.dataIssues.some(d => d.sev === 'Red')) return 'booking';
+  const failed = new Set(ev.checks.filter(c => c.status === 'fail' && c.sev === 'Red').map(c => c.id));
+  const st = OUTCOME_STAGES.find(s => s.rules.some(r => failed.has(r)));
+  return st ? st.id : null;
+}
+// before/after: arrays of evaluate() results in the same booking order (as uploaded, and now with fixes applied).
+function outcomes(before, after = before) {
+  const stages = OUTCOME_STAGES.map(s => ({ ...s, before: [], now: [], avoided: [] }));
+  const byId = Object.fromEntries(stages.map(s => [s.id, s]));
+  const atRisk = [], clean = [];
+  before.forEach((ev, i) => {
+    const id = ev.b.id, stop = firstStop(ev), nowEv = after[i] || ev, nowStop = firstStop(nowEv);
+    if (stop) { byId[stop].before.push(id); if (!nowStop) byId[stop].avoided.push(id); }
+    if (nowStop) byId[nowStop].now.push(id);
+    if (!stop) (ev.status === 'Amber' ? atRisk : clean).push(id);
+  });
+  const stoppedBefore = stages.reduce((n, s) => n + s.before.length, 0);
+  const stoppedNow = stages.reduce((n, s) => n + s.now.length, 0);
+  const avoided = stages.reduce((n, s) => n + s.avoided.length, 0);
+  return { total: before.length, stages, stoppedBefore, stoppedNow, avoided, atRisk, clean };
+}
+// costs: { stageId: { low, high } } in GBP per booking, entered by the user. Blank stages are left out, never guessed.
+// which: 'avoided' (fixed since upload, the default) or 'before' (everything at stake as uploaded).
+function avoidedCost(out, costs = {}, which = 'avoided') {
+  const lines = [];
+  out.stages.forEach(s => {
+    const c = costs[s.id] || {}, lo = num(c.low), hi = num(c.high), n = s[which].length;
+    const has = v => isNum(v) && v >= 0;
+    if (!n || (!has(lo) && !has(hi))) return;
+    const low = has(lo) ? lo : hi, high = has(hi) ? Math.max(hi, low) : low;
+    lines.push({ stage: s.id, label: s.label, n, low, high, totalLow: low * n, totalHigh: high * n });
+  });
+  return { lines, low: lines.reduce((t, l) => t + l.totalLow, 0), high: lines.reduce((t, l) => t + l.totalHigh, 0) };
+}
+
+const PF = { CARRIERS, RULES, PRICE_NOTE, OUTCOME_STAGES, outcomes, avoidedCost, CITY_COUNTRY, ORIGIN_CITIES, COO_LIST, PRIORITIES, EXAMPLE_BOOKING, EXAMPLE_ITEM,
   num, gbp, kg, fmtNum, fmtDate, fmtDateLong, todayISO, addDays, weekday, isoFromYMD, parseSheetDate, normCountry, normCity, normPriority, normDestType, normYesNo, normHS,
   DG_ADR, scanDG, hsHint, setHsIndex, getHsIndex, hsMeta, hsLookup, hsHeading, hsShort, hsRecommend, hsTokens, hsSuggest, hsSugText, hsMaterialsOf, HS_MATERIALS, parseSheets, normaliseBooking, recommend, palletPlan, evaluate, confirmation, label, isNum, clean, isBlank, MONTHS, DAY_NAMES };
 if (typeof module !== 'undefined' && module.exports) module.exports = PF; else root.PF = PF;

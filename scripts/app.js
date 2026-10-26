@@ -382,6 +382,7 @@ async function loadFiles(files) {
 function ingest(sheets, name) {
   const parsed = PF.parseSheets(sheets, { skipExample: $('#skip-ex').checked });
   fileData = { ...parsed, expected: readExpected(sheets), name, sheets };
+  fileData.baseline = fileData.bookings.map(b => PF.evaluate(b, { today: PF.todayISO() }));
   Object.keys(overrides).forEach(k => delete overrides[k]); Object.keys(reviews).forEach(k => delete reviews[k]);
   audit.length = 0; auditSeen.clear(); openRow = null; filter = 'All';
   renderFile();
@@ -390,6 +391,47 @@ function showFileError(msg) { $('#file-results').innerHTML = ''; $('#file-result
 function applyOv(raw, ov) {
   if (!ov) return raw;
   return { ...raw, ...ov.patch, items: raw.items.map((it, i) => ({ ...it, ...((ov.items || {})[i] || {}) })) };
+}
+// ---------- Outcomes panel (reporting only; statuses still come from the rulebook) ----------
+const COST_KEY = 'pf-outcome-costs';
+let costs = {}; try { costs = JSON.parse(localStorage.getItem(COST_KEY) || '{}') || {}; } catch (e) { costs = {}; }
+let costsOpen = false;
+function saveCosts() { try { localStorage.setItem(COST_KEY, JSON.stringify(costs)); } catch (e) {} }
+const ids = list => list.length ? list.map((id, i) => [i ? ', ' : '', h('span', { class: 'oc-id' }, id)]) : '—';
+const range = (lo, hi) => (lo === hi ? PF.gbp(lo) : `${PF.gbp(lo)}–${PF.gbp(hi)}`);
+function outcomesEl(rows) {
+  const o = PF.outcomes(fileData.baseline, rows.map(r => r.ev));
+  const stageCard = s => h('div', { class: 'oc-stage' + (s.before.length ? ' hit' : '') },
+    h('span', { class: 'oc-n' }, String(s.before.length)),
+    h('b', null, s.label), h('span', { class: 'muted' }, `Likely stopped ${s.where}.`),
+    h('span', { class: 'oc-ids' }, s.rules.length ? `${s.rules.join(', ')} · ` : 'Red data issues · ', ids(s.before)),
+    s.before.length ? h('span', { class: 'oc-now' + (s.now.length ? '' : ' ok') }, s.now.length ? `${s.now.length} still stopped` : 'All fixed') : null);
+  const total = h('p', { class: 'oc-total' });
+  const inputs = o.stages.map(s => ['low', 'high'].map(k => h('input', { type: 'number', min: 0, step: 50, inputmode: 'decimal', placeholder: '£', value: (costs[s.id] || {})[k] ?? '', 'aria-label': `${s.label}: ${k === 'low' ? 'low' : 'high'} cost per booking, £`,
+    oninput: e => { costs[s.id] = { ...(costs[s.id] || {}), [k]: e.target.value }; saveCosts(); paint(); } })));
+  const cells = o.stages.map(() => h('td', { class: 'r num' }));
+  function paint() {
+    const stake = PF.avoidedCost(o, costs, 'before'), saved = PF.avoidedCost(o, costs);
+    o.stages.forEach((s, i) => { const l = stake.lines.find(x => x.stage === s.id); cells[i].textContent = l ? range(l.totalLow, l.totalHigh) : '—'; });
+    total.replaceChildren(...(stake.lines.length
+      ? [h('span', null, 'At stake as uploaded: ', h('b', null, range(stake.low, stake.high))), h('span', null, 'Avoided by fixes so far: ', h('b', null, range(saved.low, saved.high)))]
+      : [h('span', { class: 'muted' }, 'Enter what one stopped booking costs you at each stage to see an estimate.')]));
+  }
+  const est = h('details', Object.assign({ class: 'oc-est', ontoggle: e => { costsOpen = e.target.open; } }, costsOpen ? { open: true } : {}),
+    h('summary', null, 'Estimate the cost (your figures)'),
+    h('p', { class: 'note' }, 'Cost per stopped booking: storage, re-delivery, demurrage, a missed slot. There are no default figures — use your own or your agent’s, as a low–high range. Saved in this browser only.'),
+    h('div', { class: 'oc-scroll' }, h('table', { class: 'oc-table' }, h('thead', null, h('tr', null, h('th', null, 'Stage'), h('th', { class: 'r' }, 'Stopped'), h('th', null, 'Low £'), h('th', null, 'High £'), h('th', { class: 'r' }, 'At stake'))),
+      h('tbody', null, o.stages.map((s, i) => h('tr', null, h('td', null, s.label), h('td', { class: 'r num' }, String(s.before.length)), h('td', null, inputs[i][0]), h('td', null, inputs[i][1]), cells[i]))))),
+    total,
+    h('p', { class: 'note' }, 'Estimate — based on your inputs, not measured. Only bookings fixed here count as avoided. Kept separate from carrier prices.'));
+  paint();
+  return h('section', { class: 'outcomes', 'aria-label': 'Outcomes' },
+    h('div', { class: 'oc-head' },
+      h('h3', null, `${o.stoppedBefore} of ${o.total} bookings would likely have been stopped as uploaded`),
+      h('p', { class: 'muted' }, o.stoppedBefore ? `${o.avoided} fixed here · ${o.stoppedNow} still stopped · ${o.atRisk.length} more need a look (Amber, not counted) · ${o.clean.length} clean` : `${o.atRisk.length} need a look (Amber) · ${o.clean.length} clean`)),
+    h('div', { class: 'oc-stages' }, o.stages.map(stageCard)),
+    h('p', { class: 'note' }, 'Each booking counts once, at the first place it would be stopped. Reporting only — Red, Amber and Green still come from the rulebook.'),
+    est);
 }
 function evalAll() { return fileData.bookings.map((b, i) => ({ i, raw: b, ev: PF.evaluate(applyOv(b, overrides[i]), { today: PF.todayISO() }), edited: !!overrides[i] })); }
 function toReview(r) { return r.ev.corrections.filter(c => !(reviews[r.i] || {})[c.id]).length; }
@@ -426,6 +468,7 @@ function renderFile() {
     h('button', { class: 'btn', type: 'button', onclick: exportResults, disabled: !rows.length }, 'Export results (.xlsx)')));
   fileData.notices.forEach(n => out.append(h('p', { class: 'notice n-' + n.level }, n.text)));
   if (!rows.length) { out.append(h('p', { class: 'note-warn' }, 'No bookings found under the header row.')); return; }
+  out.append(outcomesEl(rows));
   const exp = fileData.expected;
   const tbody = h('tbody');
   rows.filter(r => filter === 'All' || r.ev.status === filter).forEach(r => {
