@@ -21,14 +21,14 @@ const VERDICT = { Red: 'Not ready yet — fix the must-fix items first', Amber: 
 let DL = null;
 
 // ---------- Automatic-correction review and audit trail (session only; download the report to keep it) ----------
-const reviews = {}; // file bookingIndex -> { [correctionId]: { state: 'accepted' | 'changed', value, c } }
 const audit = []; const auditSeen = new Set();
 const FIELD_LABEL = { priority: 'Priority', pallets: 'Pallets', cartons: 'Cartons', declared: 'Total declared value', gross: 'Total gross weight', appointment: 'Delivery appointment', ready: 'Ready to ship date', carrierOverride: 'Carrier', destType: 'Destination type', hs: 'HS code', coo: 'Country of origin', qty: 'Quantity', price: 'Unit price', upc: 'Units per carton', unitWeight: 'Unit weight' };
 const shown = v => (v == null || v === '' ? '(blank)' : String(v));
-function logEvent(e) { audit.push({ at: new Date().toISOString(), booking: '', sku: '', field: '', before: '', after: '', by: 'you', action: '', ...e }); }
+function logEvent(e) { audit.push({ at: new Date().toISOString(), booking: '', sku: '', field: '', before: '', after: '', by: 'you', action: '', view: e.chat ? 'chat' : V.name, ...e }); }
+function clearAudit(view) { for (let i = audit.length - 1; i >= 0; i--) if (audit[i].view === view) audit.splice(i, 1); [...auditSeen].forEach(k => { if (k.startsWith(view + '|')) auditSeen.delete(k); }); }
 function noteCorrections(ev, extra = {}) {
   ev.corrections.forEach(c => {
-    const k = `${extra.chat ? 'chat' : ev.b.id}|${c.id}|${c.entered}|${c.used}`;
+    const k = `${extra.chat ? 'chat|chat' : V.name + '|' + ev.b.id}|${c.id}|${c.entered}|${c.used}`;
     if (auditSeen.has(k)) return; auditSeen.add(k);
     logEvent({ booking: ev.b.id, sku: c.sku || '', field: c.label, before: shown(c.entered), after: c.used, by: 'system', action: 'auto-corrected', ...extra });
   });
@@ -75,7 +75,7 @@ async function saveFile(name, buf) {
 }
 
 // ---------- Tabs ----------
-const TABS = ['chat', 'file', 'rules', 'tests'];
+const TABS = ['chat', 'file', 'bookings', 'rules', 'tests'];
 function renderMbar(ev) {
   const m = $('#mbar'); if (!m) return;
   m.innerHTML = '';
@@ -90,7 +90,9 @@ function renderMbar(ev) {
 function showTab(t) {
   if (!TABS.includes(t)) t = 'chat';
   TABS.forEach(x => { const tb = $('#tab-' + x); if (tb) tb.setAttribute('aria-selected', x === t); $('#panel-' + x).hidden = x !== t; });
-  renderHero(t === 'file' ? heroFor.file : heroFor.chat);
+  renderHero(t === 'file' || t === 'bookings' ? heroFor[t] : heroFor.chat);
+  if (t === 'bookings') loadSaved();
+  else if (t === 'file' && views.file.data && V !== views.file) renderView(views.file);
   if (t === 'tests') renderTests();
   const mb = $('#mbar'); if (mb) { const on = t === 'chat' && cs.complete; mb.classList.toggle('on', on); document.body.classList.toggle('has-mbar', on); }
   try { if (location.hash.slice(1) !== t) history.replaceState(null, '', '#' + t); } catch (e) {}
@@ -127,11 +129,11 @@ function routeEl(ev) {
 // ---------- Hero: route map + live check card for the booking in view ----------
 const PLAIN = { 'R-01': 'Customs code', 'R-02': 'Total value', 'R-03': 'Packing', 'R-04': 'Box total', 'R-05': 'Pallet weight', 'R-06': 'Dangerous goods', 'R-07': 'Total weight', 'R-08': 'Delivery slot', 'R-09': 'Made in', 'R-10': 'Ready date' };
 const PRICE_TXT = 'Prices are a guide. The final price can change with the city, fuel and date, so confirm with the carrier.';
-const heroFor = { chat: null, file: null };
+const heroFor = { chat: null, file: null, bookings: null };
 function setHero(tab, ev, label) {
   heroFor[tab] = ev ? { ev, label } : null;
   const cur = location.hash.slice(1) || 'chat';
-  if (cur === tab || (tab === 'chat' && cur !== 'file')) renderHero(heroFor[tab]);
+  if (cur === tab || (tab === 'chat' && cur !== 'file' && cur !== 'bookings')) renderHero(heroFor[tab]);
 }
 // Example booking for the hero until the user has one of their own (first demo booking, a clean London → Berlin run).
 let demoHeroCache;
@@ -491,7 +493,7 @@ function send(text) {
   const { st, reply } = C.turn(cs, text, PF.todayISO());
   cs = st;
   const parts = [];
-  if (reply.intent === 'reset') { renderSheet(); bubble('bot', h('p', null, reply.ask)); return; }
+  if (reply.intent === 'reset') { chatDb = null; chatSaved = ''; renderSheet(); bubble('bot', h('p', null, reply.ask)); return; }
   if (reply.intent === 'help') parts.push(h('p', null, 'Tell me about the shipment in plain words. You can change anything at any time — “add a pallet”, “send it to Lyon instead”, “HS code for the mugs is 691200”, “switch to carrier B”. Say “what’s wrong?” for the report, “confirm” to book, or “start over”.'));
   reply.notes.forEach(n => parts.push(h('p', { class: 'note-warn' }, n)));
   if (cs.complete || reply.status) reply.changes.filter(c => !c.first && c.from !== '—').forEach(c => logEvent({ booking: 'CHAT', field: c.label, before: String(c.from), after: String(c.to), action: 'changed', chat: true }));
@@ -588,7 +590,7 @@ function renderSheet() {
   const F = (key, label, val, derived) => h('div', { class: 'cell' + (val == null ? ' empty' : '') + (pend && pend.field === key && pend.item == null ? ' asking' : '') },
     h('span', { class: 'lab' }, label), h('span', { class: 'val' }, val == null ? 'needed' : val, derived ? h('span', { class: 'calc', title: 'Worked out from the items' }, 'calc') : null));
   const cartons = b.cartonsStated ? b.cartons : t.cartons; const declared = b.declaredStated ? b.declared : t.value;
-  s.append(h('div', { class: 'sheet-head' }, h('h2', null, 'Booking sheet'), h('span', { class: 'muted' }, cs.confirmed ? 'Confirmed · ' + cs.confirmed : cs.complete ? 'Complete' : `${C.missing(cs).length} detail${C.missing(cs).length === 1 ? '' : 's'} to go`)));
+  s.append(h('div', { class: 'sheet-head' }, h('h2', null, 'Booking sheet'), h('span', { class: 'muted' }, cs.confirmed ? 'Confirmed · ' + cs.confirmed : cs.complete ? 'Complete' : `${C.missing(cs).length} detail${C.missing(cs).length === 1 ? '' : 's'} to go`, cs.complete ? [' ', saveNote('chat')] : null)));
   s.append(h('div', { class: 'formgrid' },
     F('seller', 'Seller', b.seller), F('originCity', 'Collect from', b.originCity ? b.originCity + ', UK' : null), F('destCity', 'Deliver to', b.destCity ? `${b.destCity}, ${b.destCountry}` : b.destCountry ? `? , ${b.destCountry}` : null),
     F('destType', 'Destination type', b.destType), F('ready', 'Ready to ship', b.ready ? PF.fmtDate(b.ready) : null), F('priority', 'Priority', b.priority),
@@ -603,6 +605,7 @@ function renderSheet() {
       : h('tr', null, h('td', { colspan: 8, class: 'empty' }, 'No items yet'))))));
   const ev = PF.evaluate(C.toRaw(cs, cs.confirmed || 'CHAT'), { today: PF.todayISO() });
   renderMbar(cs.complete ? ev : null);
+  saveChat();
   setHero('chat', cs.complete ? ev : null, 'Your booking');
   const cr = $('#chat-report'); if (cr) { cr.innerHTML = ''; if (cs.complete) { if (!chatBase) chatBase = [...failingIds(ev)]; cr.append(reportEl(ev, chatCtx)); } else chatBase = null; }
   else {
@@ -617,12 +620,14 @@ function renderSheet() {
 }
 $('#chat-form').addEventListener('submit', e => { e.preventDefault(); const i = $('#chat-input'); const v = i.value; i.value = ''; send(v); i.focus(); });
 $('#chat-input').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#chat-form').requestSubmit(); } });
-$('#chat-reset').addEventListener('click', () => { cs = C.newState(); greet(); renderSheet(); $('#chat-input').focus(); });
+$('#chat-reset').addEventListener('click', () => { cs = C.newState(); chatDb = null; chatSaved = ''; greet(); renderSheet(); $('#chat-input').focus(); });
 
 // ---------- FILE ----------
-let fileData = null; // {bookings, notices, expected, name}
-const overrides = {}; // bookingIndex -> {patch, items:{i:{}}}
-let filter = 'All', openRow = null;
+// Two lists share this UI: the uploaded file and the saved bookings. V is the one being drawn.
+// data: {bookings, notices, expected, name, baseline, db?}; ov: bookingIndex -> {patch, items:{i:{}}}; rv: bookingIndex -> reviewed corrections.
+const newView = (name, out) => ({ name, out, data: null, ov: {}, rv: {}, filter: 'All', source: 'All', openRow: null });
+const views = { file: newView('file', '#file-results'), bookings: newView('bookings', '#bookings-results') };
+let V = views.file;
 function sheetsFromWorkbook(wb, fname) {
   return wb.SheetNames.map(n => ({ name: wb.SheetNames.length === 1 ? (fname.replace(/\.[^.]+$/, '') || n) : n, rows: XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: null, blankrows: true }) }));
 }
@@ -642,15 +647,22 @@ async function loadFiles(files) {
     try { const wb = XLSX.read(buf, { type: 'array', raw: csv, cellDates: false }); all.push(...sheetsFromWorkbook(wb, f.name)); names.push(f.name); }
     catch (e) { showFileError(`Couldn’t read ${f.name}: ${e.message}. Upload .xlsx, .xls or .csv.`); return; }
   }
-  ingest(all, names.join(' + '));
+  ingest(all, names.join(' + '), { save: true });
 }
-function ingest(sheets, name) {
+function ingest(sheets, name, opts = {}) {
+  const v = views.file;
   const parsed = PF.parseSheets(sheets, { skipExample: $('#skip-ex').checked });
-  fileData = { ...parsed, expected: readExpected(sheets), name, sheets };
-  fileData.baseline = fileData.bookings.map(b => PF.evaluate(b, { today: PF.todayISO() }));
-  Object.keys(overrides).forEach(k => delete overrides[k]); Object.keys(reviews).forEach(k => delete reviews[k]);
-  audit.length = 0; auditSeen.clear(); openRow = null; filter = 'All';
-  renderFile();
+  v.data = { ...parsed, expected: readExpected(sheets), name, sheets };
+  v.data.baseline = v.data.bookings.map(b => PF.evaluate(b, { today: PF.todayISO() }));
+  v.ov = {}; v.rv = {}; v.openRow = null; v.filter = 'All';
+  clearAudit('file');
+  // Uploaded files go to the shared bookings list; the built-in sample and demo files don't.
+  if (opts.save && v.data.bookings.length) {
+    const uploadId = uuid();
+    v.data.db = v.data.bookings.map(() => ({ id: uuid(), source: 'file', upload_id: uploadId, file_name: name }));
+    saveRows(v, v.data.bookings.map((b, i) => i));
+  }
+  renderFile(v);
 }
 function showFileError(msg) { $('#file-results').innerHTML = ''; $('#file-results').append(h('p', { class: 'note-warn' }, msg)); }
 function applyOv(raw, ov) {
@@ -674,6 +686,7 @@ function tween(el, to, fmt = String, ms = 900) {
 const OC_STATE = { stopped: { word: 'Stopped', glyph: '✕' }, fixed: { word: 'Fixed', glyph: '✓' }, risk: { word: 'Need a look', glyph: '!' }, clean: { word: 'Clean', glyph: '' } };
 function ocState(r) { return r.now ? 'stopped' : r.before ? 'fixed' : r.status === 'Amber' ? 'risk' : 'clean'; }
 function outcomesPanel() {
+  const fileData = V.data;
   if (fileData.oc) return fileData.oc;
   const stageById = Object.fromEntries(PF.OUTCOME_STAGES.map(st => [st.id, st]));
   const n = () => h('b', { class: 'num', 'data-v': 0 }, '0');
@@ -807,14 +820,15 @@ function outcomesPanel() {
   fileData.oc = { el, update };
   return fileData.oc;
 }
-function evalAll() { return fileData.bookings.map((b, i) => ({ i, raw: b, ev: PF.evaluate(applyOv(b, overrides[i]), { today: PF.todayISO() }), edited: !!overrides[i] })); }
-function toReview(r) { return r.ev.corrections.filter(c => !(reviews[r.i] || {})[c.id]).length; }
+function evalAll(v = V) { return v.data.bookings.map((b, i) => ({ i, raw: b, ev: PF.evaluate(applyOv(b, v.ov[i]), { today: PF.todayISO() }), edited: !!v.ov[i] })); }
+function toReview(r, v = V) { return r.ev.corrections.filter(c => !(v.rv[r.i] || {})[c.id]).length; }
 function logFix(r, a) {
   const b = r.ev.b; const cur = k => (k === 'carrierOverride' ? (r.ev.rec ? r.ev.rec.chosen.carrier : '') : k === 'ready' ? PF.fmtDate(b.ready) : b[k]);
   if (a.patch) Object.entries(a.patch).forEach(([k, v]) => logEvent({ booking: b.id, field: FIELD_LABEL[k] || k, before: shown(cur(k)), after: v == null ? '(recommended)' : String(v), action: 'fix applied' }));
   if (a.itemPatch) { const it = b.items[a.itemPatch.i] || {}; Object.entries(a.itemPatch.f).forEach(([k, v]) => logEvent({ booking: b.id, sku: it.sku || '', field: FIELD_LABEL[k] || k, before: shown(k === 'hs' ? (it.hs && it.hs.raw) : it[k]), after: String(v), action: 'fix applied' })); }
 }
-function fileReview(r, getCtx) {
+function fileReview(r, getCtx, v = V) {
+  const reviews = v.rv, renderFile = () => renderView(v);
   const mine = () => (reviews[r.i] = reviews[r.i] || {});
   const log = (c, action, after) => logEvent({ booking: r.ev.b.id, sku: c.sku || '', field: c.label, before: action === 'changed' ? c.used : shown(c.entered), after, action });
   return {
@@ -830,50 +844,60 @@ function fileReview(r, getCtx) {
     redraw: () => renderFile(),
   };
 }
-function renderFile() {
-  const out = $('#file-results'); out.innerHTML = '';
+function renderFile(v = V) { renderView(v); }
+const SRC_LABEL = { All: 'All sources', chat: 'Chat', file: 'Files' };
+function renderView(v) {
+  V = v;
+  const out = $(v.out); out.innerHTML = '';
+  const fileData = v.data;
   if (!fileData) return;
-  const rows = evalAll();
-  rows.forEach(r => noteCorrections(r.ev));
+  const all = evalAll(v);
+  all.forEach(r => noteCorrections(r.ev));
+  // Saved bookings: rows can also be narrowed to chat or file bookings; the counts follow that choice.
+  const src = r => (fileData.db && fileData.db[r.i] ? fileData.db[r.i].source : 'file');
+  const rows = v.name === 'bookings' && v.source !== 'All' ? all.filter(r => src(r) === v.source) : all;
   const cnt = s => rows.filter(r => r.ev.status === s).length;
   out.append(h('div', { class: 'file-head' },
-    h('div', null, h('h2', null, `${rows.length} booking${rows.length === 1 ? '' : 's'} checked`), h('p', { class: 'muted' }, fileData.name)),
-    h('div', { class: 'filters', role: 'group', 'aria-label': 'Filter by status' }, ['All', 'Red', 'Amber', 'Green', 'Review', 'Advisory'].map(s => h('button', { type: 'button', class: 'fbtn f-' + s, 'aria-pressed': String(filter === s), onclick: () => { filter = s; renderFile(); } }, `${({ All: 'All', Red: 'Must fix', Amber: 'Check', Green: 'Ready', Review: 'To check', Advisory: 'Good to know' })[s]} ${s === 'All' ? rows.length : s === 'Review' ? rows.filter(r => toReview(r)).length : s === 'Advisory' ? rows.filter(r => r.ev.advisories.length + (r.ev.warnings || []).length).length : cnt(s)}`))),
-    h('button', { class: 'btn', type: 'button', onclick: exportResults, disabled: !rows.length }, 'Export results (.xlsx)')));
+    h('div', null, h('h2', null, v.name === 'bookings' ? `${rows.length} saved booking${rows.length === 1 ? '' : 's'}` : `${rows.length} booking${rows.length === 1 ? '' : 's'} checked`), h('p', { class: 'muted' }, fileData.name, ' ', saveNote(v))),
+    h('div', { class: 'filters', role: 'group', 'aria-label': 'Filter by status' }, ['All', 'Red', 'Amber', 'Green', 'Review', 'Advisory'].map(s => h('button', { type: 'button', class: 'fbtn f-' + s, 'aria-pressed': String(v.filter === s), onclick: () => { v.filter = s; renderView(v); } }, `${({ All: 'All', Red: 'Must fix', Amber: 'Check', Green: 'Ready', Review: 'To check', Advisory: 'Good to know' })[s]} ${s === 'All' ? rows.length : s === 'Review' ? rows.filter(r => toReview(r, v)).length : s === 'Advisory' ? rows.filter(r => r.ev.advisories.length + (r.ev.warnings || []).length).length : cnt(s)}`))),
+    h('button', { class: 'btn', type: 'button', onclick: () => { V = v; exportResults(); }, disabled: !rows.length }, 'Export results (.xlsx)')));
+  if (v.name === 'bookings') out.append(h('div', { class: 'filters srcf', role: 'group', 'aria-label': 'Filter by source' }, ['All', 'chat', 'file'].map(s => h('button', { type: 'button', class: 'fbtn', 'aria-pressed': String(v.source === s), onclick: () => { v.source = s; v.openRow = null; renderView(v); } }, `${SRC_LABEL[s]} ${s === 'All' ? all.length : all.filter(r => src(r) === s).length}`))));
   fileData.notices.forEach(n => out.append(h('p', { class: 'notice n-' + n.level }, n.text)));
-  if (!rows.length) { out.append(h('p', { class: 'note-warn' }, 'No bookings found under the header row.')); return; }
-  out.append(outcomesPanel().update(rows));
+  if (!all.length) { out.append(h('p', { class: 'note-warn' }, v.name === 'bookings' ? 'No saved bookings yet. Book by chat or upload a sheet, and they appear here.' : 'No bookings found under the header row.')); return; }
+  out.append(outcomesPanel().update(all));
   const exp = null; // expected-results comparison is not shown in the simplified UI
-  { const openR = rows.find(r2 => r2.i === openRow); setHero('file', openR ? openR.ev : null, openR ? openR.ev.b.id : ''); }
+  { const openR = rows.find(r2 => r2.i === v.openRow); setHero(v.name, openR ? openR.ev : null, openR ? openR.ev.b.id : ''); }
   const tbody = h('tbody');
-  rows.filter(r => filter === 'All' || (filter === 'Review' ? toReview(r) > 0 : filter === 'Advisory' ? r.ev.advisories.length + r.ev.warnings.length > 0 : r.ev.status === filter)).forEach(r => {
+  rows.filter(r => v.filter === 'All' || (v.filter === 'Review' ? toReview(r, v) > 0 : v.filter === 'Advisory' ? r.ev.advisories.length + r.ev.warnings.length > 0 : r.ev.status === v.filter)).forEach(r => {
     const { ev } = r; const b = ev.b;
     const flagged = [...ev.checks.filter(c => c.status === 'fail' || c.status === 'check').map(c => ({ t: PLAIN[c.id] || c.id, s: c.status === 'check' ? 'Amber' : c.sev })), ...(ev.dataIssues.length ? [{ t: `Booking details ×${ev.dataIssues.length}`, s: ev.dataIssues.some(d => d.sev === 'Red') ? 'Red' : 'Amber' }] : [])];
     const e = exp && exp[b.id.toUpperCase()];
-    const open = openRow === r.i;
-    const tr = h('tr', { class: 'brow' + (open ? ' open' : ''), tabindex: 0, 'aria-expanded': open, onclick: () => { openRow = open ? null : r.i; renderFile(); }, onkeydown: ev2 => { if (ev2.key === 'Enter' || ev2.key === ' ') { ev2.preventDefault(); openRow = open ? null : r.i; renderFile(); } } },
-      h('td', null, h('span', { class: 'chev', 'aria-hidden': 'true' }, open ? '▾' : '▸'), b.id, r.edited ? h('span', { class: 'tag ghost' }, 'edited') : null),
+    const open = v.openRow === r.i;
+    const dbr = v.name === 'bookings' && fileData.db ? fileData.db[r.i] : null;
+    const tr = h('tr', { class: 'brow' + (open ? ' open' : ''), tabindex: 0, 'aria-expanded': open, onclick: () => { v.openRow = open ? null : r.i; renderView(v); }, onkeydown: ev2 => { if (ev2.key === 'Enter' || ev2.key === ' ') { ev2.preventDefault(); v.openRow = open ? null : r.i; renderView(v); } } },
+      h('td', null, h('span', { class: 'chev', 'aria-hidden': 'true' }, open ? '▾' : '▸'), b.id, r.edited ? h('span', { class: 'tag ghost' }, 'edited') : null,
+        dbr ? h('small', { class: 'src', title: dbr.source === 'chat' ? 'Booked by chat' : `Uploaded in ${dbr.file_name || 'a file'}` }, `${dbr.source === 'chat' ? 'Chat' : dbr.file_name || 'File'} · ${savedAt(dbr.updated_at)}`) : null),
       h('td', null, b.seller || '—'),
       h('td', null, `${b.originCity || '?'} → ${b.destCity || '?'}`),
       h('td', null, h('span', { class: 'pill p-' + ev.status }, ({ Red: 'Must fix', Amber: 'Check', Green: 'Ready' })[ev.status])),
       h('td', null, flagged.length ? flagged.map(f => h('span', { class: 'rchip s-' + f.s }, f.t)) : (ev.advisories.length + (ev.warnings || []).length ? null : h('span', { class: 'muted' }, 'none')), ev.warnings.length ? h('span', { class: 'rchip s-Warn', title: ev.warnings.map(w => `${w.title}: ${w.sku}`).join('\n') }, warnIcon(), ` ${ev.warnings.length}`) : null, ev.advisories.length + (ev.warnings || []).length ? h('span', { class: 'rchip s-Adv', title: 'Doesn’t block the booking' }, 'Good to know') : null),
       h('td', null, !ev.rec ? '—' : ev.rec.chosen.fits === false && ev.rec.fixes.length ? h('span', null, h('s', { class: 'muted' }, ev.rec.chosen.carrier), ' → ', `${ev.rec.fixes[0].carrier}${ev.rec.fixes[0].type === 'repack' ? ` on ${ev.rec.fixes[0].pallets} plt` : ''} · ${PF.gbp(ev.rec.fixes[0].cost)}`) : `${ev.rec.chosen.carrier} · ${PF.gbp(ev.rec.chosen.cost)}`),
-      h('td', { class: 'num' }, toReview(r) || ''),
+      h('td', { class: 'num' }, toReview(r, v) || ''),
       exp ? h('td', null, e ? h('span', { class: String(e.status).toLowerCase() === ev.status.toLowerCase() ? 'match' : 'mismatch', title: e.rules || '' }, String(e.status).toLowerCase() === ev.status.toLowerCase() ? `✓ ${e.status}` : `✕ expected ${e.status}`) : '—') : null);
     tbody.append(tr);
     if (open) {
-      const ctx = { mode: 'file', apply: a => { if (a.audit !== false) logFix(r, a); const o = overrides[r.i] = overrides[r.i] || { patch: {}, items: {} }; if (a.patch) Object.assign(o.patch, a.patch); if (a.itemPatch) o.items[a.itemPatch.i] = { ...(o.items[a.itemPatch.i] || {}), ...a.itemPatch.f }; renderFile(); },
+      const ctx = { mode: 'file', apply: a => { if (a.audit !== false) logFix(r, a); const o = v.ov[r.i] = v.ov[r.i] || { patch: {}, items: {} }; if (a.patch) Object.assign(o.patch, a.patch); if (a.itemPatch) o.items[a.itemPatch.i] = { ...(o.items[a.itemPatch.i] || {}), ...a.itemPatch.f }; saveRows(v, [r.i]); renderView(v); },
         fixedCount: e2 => { const base = failingIds(PF.evaluate(r.raw, { today: PF.todayISO() })); const now = failingIds(e2); return [...base].filter(id => !now.has(id)).length; },
-        review: fileReview(r, () => ctx), reviewedCount: e2 => e2.corrections.filter(c => (reviews[r.i] || {})[c.id]).length,
-        history: () => audit.filter(e2 => !e2.chat && e2.booking === r.ev.b.id) };
+        review: fileReview(r, () => ctx, v), reviewedCount: e2 => e2.corrections.filter(c => (v.rv[r.i] || {})[c.id]).length,
+        history: () => audit.filter(e2 => e2.view === v.name && e2.booking === r.ev.b.id) };
       tbody.append(h('tr', { class: 'detail' }, h('td', { colspan: exp ? 8 : 7 },
-        r.edited ? h('p', { class: 'edited-note' }, 'You’ve applied fixes here — the report shows the corrected booking. ', h('button', { class: 'linkbtn', type: 'button', onclick: () => { logEvent({ booking: b.id, field: 'All fixes and reviews', before: 'edited', after: 'as uploaded', action: 'fixes undone' }); delete overrides[r.i]; delete reviews[r.i]; renderFile(); } }, 'Undo my fixes')) : null,
+        r.edited ? h('p', { class: 'edited-note' }, 'You’ve applied fixes here — the report shows the corrected booking. ', h('button', { class: 'linkbtn', type: 'button', onclick: () => { logEvent({ booking: b.id, field: 'All fixes and reviews', before: 'edited', after: 'as uploaded', action: 'fixes undone' }); delete v.ov[r.i]; delete v.rv[r.i]; saveRows(v, [r.i]); renderView(v); } }, 'Undo my fixes')) : null,
         reportEl(r.ev, ctx))));
     }
   });
   out.append(h('div', { class: 'tablewrap' }, h('table', { class: 'btable' },
     h('thead', null, h('tr', null, h('th', null, 'Booking'), h('th', null, 'Seller'), h('th', null, 'Route'), h('th', null, 'Status'), h('th', null, 'Issues'), h('th', null, 'Carrier'), h('th', { class: 'num' }, 'To check'), exp ? h('th', null, 'Expected') : null)), tbody)));
-  out.append(historyEl(audit.filter(e2 => !e2.chat), 'Audit trail') || h('p', { class: 'muted' }, 'Audit trail: no changes yet.'));
+  out.append(historyEl(audit.filter(e2 => e2.view === v.name), 'Audit trail') || h('p', { class: 'muted' }, 'Audit trail: no changes yet.'));
   if (exp) { const m = rows.filter(r => exp[r.ev.b.id.toUpperCase()]); const ok = m.filter(r => String(exp[r.ev.b.id.toUpperCase()].status).toLowerCase() === r.ev.status.toLowerCase()); out.append(h('p', { class: 'muted' }, `Expected-results sheet found: ${ok.length} of ${m.length} bookings match the expected status${rows.some(r => r.edited) ? ' (after your fixes)' : ''}.`)); }
 }
 async function exportResults() {
@@ -892,7 +916,7 @@ async function exportResults() {
   const wb = XLSX.utils.book_new();
   const s1 = XLSX.utils.aoa_to_sheet(sum); s1['!cols'] = [10, 22, 24, 12, 8, 9, 10, 22, 26, 10, 10, 12, 12, 10, 10].map(w => ({ wch: w }));
   const s2 = XLSX.utils.aoa_to_sheet(iss); s2['!cols'] = [10, 9, 40, 70, 70].map(w => ({ wch: w }));
-  const cor = [['Time', 'Booking', 'SKU', 'Field', 'Before', 'After', 'By', 'Action'], ...audit.filter(e => !e.chat).map(e => [e.at, e.booking, e.sku, e.field, e.before, e.after, e.by, e.action])];
+  const cor = [['Time', 'Booking', 'SKU', 'Field', 'Before', 'After', 'By', 'Action'], ...audit.filter(e => e.view === V.name).map(e => [e.at, e.booking, e.sku, e.field, e.before, e.after, e.by, e.action])];
   const s3 = XLSX.utils.aoa_to_sheet(cor); s3['!cols'] = [22, 10, 10, 24, 22, 22, 8, 16].map(w => ({ wch: w }));
   XLSX.utils.book_append_sheet(wb, s1, 'Summary'); XLSX.utils.book_append_sheet(wb, s2, 'Issues'); XLSX.utils.book_append_sheet(wb, s3, 'Corrections');
   await saveFile('cargopass-results.xlsx', XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
@@ -908,7 +932,73 @@ $('#dl-sample').addEventListener('click', () => saveFile('CargoPass_Test_Cases.x
 function demoBuf() { const bin = atob(window.DEMO_XLSX_B64 || ''); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u.buffer; }
 $('#load-demo').addEventListener('click', () => { const wb = XLSX.read(demoBuf(), { type: 'array' }); ingest(sheetsFromWorkbook(wb, 'CargoPass_Demo_Bookings.xlsx'), 'Demo: 12 bookings across every route'); });
 $('#dl-demo').addEventListener('click', () => saveFile('CargoPass_Demo_Bookings.xlsx', demoBuf()));
-$('#skip-ex').addEventListener('change', () => { if (fileData) ingest(fileData.sheets, fileData.name); });
+$('#skip-ex').addEventListener('change', () => { const d = views.file.data; if (d) ingest(d.sheets, d.name, { save: false }); });
+
+// ---------- SAVED BOOKINGS (shared list in the database, through /api/bookings) ----------
+const API = 'api/bookings';
+const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, c => (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16)));
+const savedAt = iso => { if (!iso) return ''; const d = new Date(iso), p2 = n => String(n).padStart(2, '0'); return `${p2(d.getDate())}-${p2(d.getMonth() + 1)}-${d.getFullYear()} ${p2(d.getHours())}:${p2(d.getMinutes())}`; };
+const inflight = new Set();
+// The row the database keeps: what was entered, the fixes on top, and the result of checking it.
+function savedRow(meta, original, ov) {
+  const cur = applyOv(original, ov || null);
+  const ev = PF.evaluate(cur, { today: PF.todayISO() }); const c = ev.rec && ev.rec.chosen;
+  return { id: meta.id, source: meta.source, booking_id: String(cur.id || '(no ID)').trim().slice(0, 80) || '(no ID)', upload_id: meta.upload_id || null, file_name: meta.file_name || null,
+    original, overrides: ov || null, current: cur, status: ev.status, carrier: c ? c.carrier : null, cost: c ? c.cost : null };
+}
+async function postRows(rows) {
+  for (let i = 0; i < rows.length; i += 500) {
+    const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookings: rows.slice(i, i + 500) }) });
+    if (!r.ok) { let msg = `error ${r.status}`; try { msg = (await r.json()).error || msg; } catch (e) {} throw new Error(msg); }
+  }
+}
+// Save state per list ('file', 'bookings', 'chat'), shown next to the list's name.
+const saveState = {};
+function saveNote(key) { const st = saveState[key.name || key]; return h('span', { class: 'savenote s-' + (st ? st.state : 'none'), 'data-save': key.name || key }, saveText(st)); }
+function saveText(st) { return !st ? '' : st.state === 'saving' ? '· Saving…' : st.state === 'saved' ? '· Saved to Bookings' : `· Not saved (${st.msg}) — it will try again with your next change`; }
+function setSave(key, state, msg) { saveState[key] = { state, msg }; document.querySelectorAll(`[data-save="${key}"]`).forEach(el => { el.className = 'savenote s-' + state; el.textContent = saveText(saveState[key]); }); }
+function track(key, p) { inflight.add(p); setSave(key, 'saving'); p.then(() => setSave(key, 'saved'), e => setSave(key, 'error', e.message || 'offline')).finally(() => inflight.delete(p)); return p; }
+// Rows of a list waiting to be saved; changes within 300 ms go up together. Rows that failed stay queued for the next try.
+const pending = { file: new Set(), bookings: new Set() }; const timers = {};
+function saveRows(v, idxs) {
+  if (!v.data || !v.data.db) return;
+  idxs.forEach(i => pending[v.name].add(i));
+  clearTimeout(timers[v.name]);
+  timers[v.name] = setTimeout(() => {
+    const data = v.data, idx = [...pending[v.name]]; pending[v.name].clear();
+    const rows = idx.map(i => savedRow(data.db[i], data.bookings[i], v.ov[i]));
+    track(v.name, postRows(rows)).catch(() => { if (v.data === data) idx.forEach(i => pending[v.name].add(i)); });
+  }, 300);
+}
+// A chat booking is saved once every detail is in, and again after every change (its original follows the conversation).
+let chatDb = null, chatSaved = '';
+function saveChat() {
+  if (!cs.complete) return;
+  chatDb = chatDb || { id: uuid(), source: 'chat' };
+  const raw = C.toRaw(cs, cs.confirmed || 'CHAT-' + chatDb.id.slice(0, 6).toUpperCase());
+  const row = savedRow(chatDb, JSON.parse(JSON.stringify(raw)), null);
+  const key = JSON.stringify(row); if (key === chatSaved) return;
+  track('chat', postRows([row])).then(() => { chatSaved = key; }, () => {});
+}
+async function loadSaved() {
+  const v = views.bookings, out = $(v.out);
+  if (!v.data) { out.innerHTML = ''; out.append(h('p', { class: 'muted' }, 'Loading saved bookings…')); }
+  await Promise.allSettled([...inflight]);
+  let res;
+  try { const r = await fetch(API, { cache: 'no-store' }); res = await r.json(); if (!r.ok) throw new Error(res.error || `error ${r.status}`); }
+  catch (e) { out.innerHTML = ''; out.append(h('p', { class: 'note-warn' }, `Couldn’t load saved bookings: ${e.message}. `, h('button', { class: 'linkbtn', type: 'button', onclick: loadSaved }, 'Try again'))); return; }
+  const rows = res.bookings || [];
+  const keepOpen = v.data && v.openRow != null && v.data.db[v.openRow] ? v.data.db[v.openRow].id : null;
+  v.data = { bookings: rows.map(r => r.original), notices: [], expected: null,
+    name: `Shared list · newest first${rows.length >= res.limit ? ` · latest ${res.limit}` : ''}`,
+    db: rows.map(r => ({ id: r.id, source: r.source, upload_id: r.upload_id, file_name: r.file_name, updated_at: r.updated_at })) };
+  v.data.baseline = v.data.bookings.map(b => PF.evaluate(b, { today: PF.todayISO() }));
+  v.ov = {}; rows.forEach((r, i) => { if (r.overrides) v.ov[i] = r.overrides; });
+  v.rv = {}; pending.bookings.clear(); clearAudit('bookings');
+  v.openRow = keepOpen ? v.data.db.findIndex(d => d.id === keepOpen) : null; if (v.openRow < 0) v.openRow = null;
+  if ((location.hash.slice(1) || 'chat') === 'bookings') renderView(v);
+}
+$('#bookings-refresh').addEventListener('click', loadSaved);
 
 // ---------- RULES ----------
 function renderRules() {
@@ -930,7 +1020,7 @@ function renderRules() {
     h('li', null, 'If a value was written differently (like “UK” or a spreadsheet date), we show what we read it as, so you can accept or change it.'),
     h('li', null, 'Notes under “Good to know” never block your booking.'),
     h('li', null, PRICE_TXT),
-    h('li', null, 'Everything runs in your browser. Nothing you type or upload leaves this page.')));
+    h('li', null, 'The checks run in your browser. Bookings you finish by chat and sheets you upload are saved to one shared list on the Bookings tab, which anyone with this link can see — don’t enter anything private.')));
   if (hsStamp()) R.append(h('p', { class: 'note hsstamp' }, hsStamp()));
 }
 

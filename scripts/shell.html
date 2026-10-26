@@ -271,6 +271,12 @@ details > summary { cursor: pointer; font-weight: 500; padding: 6px 0; }
 .file-head h2 { font-size: 22px; }
 .file-head p { margin: 0; }
 .filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.filters.srcf { margin: -2px 0 12px; }
+.saved-intro { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.saved-intro p { margin: 0; }
+.btable small.src { display: block; margin-top: 2px; font-size: 11.5px; font-family: var(--mono); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 26ch; }
+.savenote { font-size: 12.5px; color: var(--dim); }
+.savenote.s-error { color: var(--amber); }
 .fbtn { border: 1px solid var(--line); background: var(--glass); color: var(--muted); border-radius: 999px; padding: 5px 13px; cursor: pointer; font: 12.5px var(--mono); }
 .fbtn[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 .fbtn.f-Review { border-color: rgba(79,209,255,.4); } .fbtn.f-Advisory { border-color: rgba(182,156,255,.45); }
@@ -656,6 +662,7 @@ footer { max-width: 1320px; margin: 0 auto; padding: 0 24px 40px; color: var(--d
       <nav class="links" role="tablist" aria-label="Sections">
         <button id="tab-chat" role="tab" aria-controls="panel-chat">Book a shipment</button>
         <button id="tab-file" role="tab" aria-controls="panel-file">Check a file</button>
+        <button id="tab-bookings" role="tab" aria-controls="panel-bookings">Bookings</button>
         <button id="tab-rules" role="tab" aria-controls="panel-rules">How it works</button>
       </nav>
       <button class="btn cta" type="button" data-go="chat"><span>Start a booking</span> →</button>
@@ -708,6 +715,14 @@ footer { max-width: 1320px; margin: 0 auto; padding: 0 24px 40px; color: var(--d
     <div id="file-results"></div>
   </section>
 
+  <section id="panel-bookings" role="tabpanel" aria-labelledby="tab-bookings" hidden>
+    <div class="saved-intro">
+      <p class="muted">Every booking finished by chat and every uploaded sheet, newest first. Fixes you make here are saved for everyone.</p>
+      <button id="bookings-refresh" class="btn ghost small" type="button">Refresh</button>
+    </div>
+    <div id="bookings-results"></div>
+  </section>
+
   <section id="panel-rules" role="tabpanel" aria-labelledby="tab-rules" hidden>
     <div class="prose" id="rules-body"></div>
   </section>
@@ -717,7 +732,7 @@ footer { max-width: 1320px; margin: 0 auto; padding: 0 24px 40px; color: var(--d
   </section>
 </main>
 <div id="mbar" class="mbar" aria-live="polite"></div>
-<footer>Checks run in your browser against today’s date (<span id="today"></span>). Nothing you type or upload leaves this page.</footer>
+<footer>Checks run in your browser against today’s date (<span id="today"></span>). Finished chat bookings and uploaded sheets are saved to a shared list on the Bookings tab that anyone with this link can see.</footer>
 <script>window.SAMPLE_XLSX_B64 = "{{SAMPLE}}";</script>
 <script>window.DEMO_XLSX_B64 = "{{DEMO}}";</script>
 <script>window.HS_INDEX = {{HSINDEX}};</script>

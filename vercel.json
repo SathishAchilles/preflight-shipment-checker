@@ -1,8 +1,15 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "installCommand": "dnf install -y postgresql16",
+  "installCommand": "dnf install -y postgresql16 && npm ci",
   "buildCommand": "sh scripts/vercel_build.sh",
   "outputDirectory": "dist",
-  "regions": ["sin1"]
+  "regions": [
+    "sin1"
+  ],
+  "functions": {
+    "api/bookings.js": {
+      "maxDuration": 10
+    }
+  }
 }

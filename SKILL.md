@@ -28,6 +28,9 @@ A single self-contained HTML app (no backend, no login) that:
 | `scripts/snapshot_tariff.py` | Downloads the DBT tariff and HMRC search references and loads them into Supabase as one snapshot version (`--dry-run`, `--if-new`, `--replace`). |
 | `scripts/export_hs_index.py` | Writes `assets/hs_index.json` from the current snapshot's views, after self-checks. |
 | `scripts/dbenv.py` | `psql` connection from `DATABASE_MIGRATION_URL` (environment or gitignored `.env.local`); `--check`, `--apply file.sql`. Never prints the URL. |
+| `api/bookings.js` | Vercel function for the shared bookings list: `GET` lists the newest 500, `POST` saves or updates up to 1,000 rows (validated, 64 KB per booking). Connects as `preflight_app` through `BOOKINGS_DATABASE_URL`. |
+| `scripts/db/002_bookings.sql` | `preflight.bookings` table (RLS on; `preflight_app` may select, insert and update it, nothing else). |
+| `scripts/dev_server.js` | Local stand-in for Vercel: serves `scripts/preflight.html` and runs `api/bookings.js` (`node scripts/dev_server.js 8787`). |
 
 ## Workflow
 1. `cd scripts && npm i xlsx@0.18.5` (Node verification only).
@@ -36,6 +39,7 @@ A single self-contained HTML app (no backend, no login) that:
 4. HS tariff data (only when refreshing it): put `DATABASE_MIGRATION_URL` (hosted Supabase session pooler, from `~/ws/trip-together/.env.production.local`) and `PSQL` in `.env.local`; `python3 -I scripts/dbenv.py --apply scripts/db/001_preflight_tariff.sql` once; then `python3 -I scripts/snapshot_tariff.py --if-new` and `python3 -I scripts/export_hs_index.py`. The app, the build and the tests need only the committed `assets/hs_index.json`, never the database.
 5. `python3 build.py` → `preflight.html`. Host anywhere static (Netlify drag-and-drop works); turn off visitor login.
 6. Deployed on Vercel: **https://cargopass-uk.vercel.app** (also https://preflight-shipment-checker-five.vercel.app) (project `preflight-shipment-checker`, team curious-minds3, Git-linked to `github.com/SathishAchilles/preflight-shipment-checker`, the copy of this repo used for deploys; push `main` there for production, any other branch for a preview). Each build runs `sh scripts/vercel_build.sh` (`vercel.json` installs `psql` with `dnf`): `snapshot_tariff.py --if-new` → `export_hs_index.py` → `build.py` → `dist/index.html`. `DATABASE_MIGRATION_URL` is a sensitive project variable. A failed database step stops the build; `HS_ALLOW_STALE=1` deploys with the committed export.
+7. Saved bookings: `python3 -I scripts/dbenv.py --apply scripts/db/002_bookings.sql` once, then give `preflight_app` a login password (via `psql` stdin, never on a command line) and store `postgresql://preflight_app.<project-ref>:<password>@<pooler-host>:6543/postgres` as `BOOKINGS_DATABASE_URL` in `.env.local` and as a sensitive Vercel variable (Production and Preview). `vercel.json` runs `npm ci` so the function gets `pg`.
 
 ## Non-negotiables
 - Never crash on bad input: every field normalises to value / blank / invalid and becomes a data issue, never an exception.

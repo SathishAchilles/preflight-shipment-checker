@@ -3,7 +3,7 @@
 ## 1. Architecture
 - **Pure engine** (`engine.js`) → normalise → evaluate → recommend → confirm. Same code runs in Node tests and the browser, so tests prove what judges see.
 - **Chat** (`chat.js`) only produces a booking object; it reuses the same engine for checks.
-- **No AI model, no server.** Deterministic, instant, works on any static host, explainable.
+- **No AI model.** Deterministic, instant, explainable. Every check runs in the browser; the only server part is `api/bookings.js`, which stores bookings and never checks them.
 - **HS tariff data** is held in Supabase (`preflight` schema: every UK tariff snapshot loaded by `snapshot_tariff.py`, plus HMRC search references). `export_hs_index.py` turns the current snapshot into `assets/hs_index.json`, which the build inlines. At runtime the app never touches the database or any tariff API; every HS result is checked against the bundled snapshot, whose version and date are shown in the report.
 
 ## 2. Reading uploaded files
@@ -111,3 +111,10 @@ Collection = ready date (today if past), moved to Monday if weekend; delivery = 
 
   The limit is called exceeded only from a value stated in the description, or from the goods weight per carton.
 - **UI.** A ⚠ section in the report, a ⚠ line in the chat verdict and a ⚠ chip in the file table. Warnings are included in the Issues sheet of the export. They never change Red/Amber/Green.
+
+## 10. Saved bookings (Bookings tab)
+- **What is saved.** A chat booking is saved when every detail is in, then again after every change; confirming changes its ID to the CP reference. Every booking of an uploaded sheet is saved on upload. The built-in demo and test files are not saved.
+- **One shared list.** Anyone with the link sees and can change every saved booking. There is no login and no delete.
+- **Row = original + overrides.** `current` is always `original` with the one-click fixes (`overrides`) applied. A file row's `original` stays as uploaded, so the outcomes "before" stays true; a chat row's `original` follows the conversation, and a chat change clears fixes made on the Bookings tab.
+- **Same UI.** The Bookings tab is the file-tab table, report, fixes, outcomes panel and export, drawn from the saved rows (`views.bookings` in `app.js`), plus a source filter (Chat / Files) and the source and save time under each ID. Every check is re-run on load against today's date, so a stored status can be older than what is shown. Fixes and "Undo my fixes" there are saved; accepted corrections and the audit trail stay in the browser session.
+- **Saving.** Changes are batched for 300 ms and sent in chunks of 500 rows. A failed save is shown next to the list's name and retried with the next change. The Bookings tab waits for saves still in flight before it loads.

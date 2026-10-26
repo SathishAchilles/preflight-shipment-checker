@@ -4,3 +4,5 @@ scripts/handoff.md
 .env.local
 __pycache__/
 dist/
+.vercel
+.env*
