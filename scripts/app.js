@@ -58,7 +58,7 @@ function reviewEl(ev, ctx) {
   return h('section', { class: 'review' },
     h('div', { class: 'review-head' }, h('h3', null, 'Automatic corrections — please review'),
       open.length ? h('button', { class: 'btn small', type: 'button', onclick: () => R.acceptAll(open) }, 'Accept all') : null),
-    h('p', { class: 'note' }, 'We changed these values before checking. Accept each one, or change it. Reviewing never changes the status.'),
+    h('p', { class: 'note' }, 'Adjusted before checking — accept or change. Never changes the status.'),
     h('div', { class: 'tablewrap' }, h('table', { class: 'ctable rvtable' },
       h('thead', null, h('tr', null, ['Field', 'You entered', 'We used', 'Why', ''].map(x => h('th', null, x)))),
       h('tbody', null, rows.map(c => { const st = R.state(c.id); return h('tr', null,
@@ -118,7 +118,7 @@ function routeEl(ev) {
   const svg = `<svg viewBox="50 90 630 380" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${esc(`Route ${b.originCity} to ${b.destCity}`)}"><defs><linearGradient id="gLive" x1="0" x2="1"><stop offset="0" stop-color="#4FD1FF"/><stop offset="1" stop-color="#FFB547"/></linearGradient></defs>${lanes}<path class="live${blocked ? ' blocked' : ''}" d="${live.d}" style="--len:${live.len}"/>${blocked ? '' : `<circle r="7" fill="#FFB547"><animateMotion dur="5s" repeatCount="indefinite" path="${live.d}"/></circle>`}${cities}</svg>`;
   const cap = blocked
     ? h('div', { class: 'cap' }, h('span', { class: 'k' }, `Route blocked · ${b.originCity} → ${b.destCity}`), h('span', null, h('b', null, PF.label(c)), ` can’t take ${PF.kg(rec.wpp)} pallets (max ${c.maxW} kg).`), rec.fixes.length ? h('span', null, 'Fix: ', h('b', null, rec.fixes[0].text)) : null)
-    : h('div', { class: 'cap' }, h('span', { class: 'k' }, `Route clear · ${b.originCity} → ${b.destCity}`), h('span', null, h('b', null, PF.label(c))), h('span', null, `${PF.gbp(c.cost)} · ${c.transit} days · ${c.onTime}% on time`), ev.eta ? h('span', null, `Collect ${PF.fmtDateLong(ev.eta.collect)} · arrive ${PF.fmtDateLong(ev.eta.arrive)}`) : null);
+    : h('div', { class: 'cap' }, h('span', { class: 'k' + (ev.status === 'Green' ? '' : ' k-' + ev.status) }, `${ev.status === 'Red' ? `Route held · ${ev.reds} must-fix` : ev.status === 'Amber' ? `Route open · check ${ev.ambers} first` : 'Route clear'} · ${b.originCity} → ${b.destCity}`), h('span', null, h('b', null, PF.label(c))), h('span', null, `${PF.gbp(c.cost)} · ${c.transit} days · ${c.onTime}% on time`), ev.eta ? h('span', null, `Collect ${PF.fmtDateLong(ev.eta.collect)} · arrive ${PF.fmtDateLong(ev.eta.arrive)}`) : null);
   return h('div', { class: 'route' + (blocked ? ' blocked' : '') }, h('div', { html: svg }), cap);
 }
 const advKind = a => (/^Possible dangerous goods/.test(a) ? 'Dangerous goods' : /^By weight/.test(a) ? 'Pallet plan' : /HS|commodity/i.test(a) ? 'HS code' : /weight|pallet/i.test(a) ? 'Weight' : 'Advisory');
@@ -143,7 +143,7 @@ function hsUse(it, i, code) { return { label: `Use ${code} for ${it.sku}`, itemP
 function hsRecActs(it, i) { const codes = [...(it.hsRec || []).map(r => r.code), ...(it.hsSug ? it.hsSug.codes : [])]; return [...new Set(codes)].map(c => hsUse(it, i, c)); }
 // Recommendations attached to HS advisories (items whose code passes R-01 but lost a leading zero).
 function hsAdvActs(ev) { const r01 = ev.checks.find(c => c.id === 'R-01'), bad = (r01 && r01.items) || []; return ev.b.items.flatMap((it, i) => bad.includes(it.sku) ? [] : hsRecActs(it, i)); }
-function hsStamp() { const m = PF.hsMeta(); return m ? `HS codes checked against UK tariff snapshot ${m.version} (${PF.fmtDate(m.snapshotDate)}) — DBT data, Open Government Licence v3.0.` : null; }
+function hsStamp() { const m = PF.hsMeta(); return m ? `HS codes checked against UK tariff snapshot ${m.version} (${PF.fmtDate(m.snapshotDate)}) · DBT data, OGL v3.0` : null; }
 // "suggested — verify" line for a code that fails R-01 (never written into the item).
 function hsSugLine(it) {
   const sug = it.hsSug && it.hsSug.level !== 'none' ? it.hsSug.codes : !PF.hsMeta() && PF.hsHint(it.description) ? [PF.hsHint(it.description).code] : [];
@@ -154,6 +154,46 @@ function hsCell(it) {
   const short = it.hs.digits.length < 6 || it.hs.hasLetters, look = short ? { known: null } : PF.hsLookup(it.hs.digits);
   return h('td', { class: short || look.known === false ? 'bad' : '' }, it.hs.raw,
     short ? hsSugLine(it) : look.known ? h('small', { class: 'hsdesc' }, look.desc) : look.known === false ? h('small', { class: 'hsdesc' }, 'not in UK tariff') : null);
+}
+// ---------- Concise review cards (human-in-the-loop) ----------
+// Each card leads with a headline (what is wrong, with the numbers), one evidence line and the actions.
+// The rule text, the full explanation and "How to fix" stay one click away under "Why".
+const words = (t, n) => { const w = String(t || '').trim().split(/\s+/); return w.length <= n ? w.join(' ') : w.slice(0, n).join(' ') + '…'; };
+const firstPart = t => String(t || '').split(/ — |(?<=\.)\s/)[0].replace(/\.$/, '');
+// Tariff label short enough for one line: heading's first words + the last level ("Pantyhose, tights, stockings › Of cotton").
+function hsLabel(desc) { const p = String(desc || '').split(' > '); return words(p[0].split(/[;(]/)[0].replace(/,\s*$/, ''), 4).replace(/,…$/, '…') + (p.length > 1 ? ` › ${p[p.length - 1]}` : ''); }
+function hsBrief(it) {
+  const s = it.hsSug && it.hsSug.level !== 'none' ? it.hsSug : null, r = (it.hsRec || [])[0];
+  const one = code => { const d = PF.hsLookup(code).desc; return h('span', { title: d || '' }, `${it.sku} → `, h('b', null, code), d ? ` · ${hsLabel(d)}` : ''); };
+  if (r) return one(r.code);
+  if (!s) return null;
+  if (s.level === 'hs6') return one(s.codes[0]);
+  return h('span', null, `${it.sku} → one of `, h('b', null, s.codes.slice(0, 4).join(', ')));
+}
+function brief(it, ev) {
+  const c = it.check, b = ev.b, d = it.detail || '';
+  if (!c) return { head: words(firstPart(d), 12) };
+  const bad = (c.items || []).map(sku => b.items.find(x => x.sku === sku)).filter(Boolean);
+  switch (c.id) {
+    case 'R-01': {
+      const one = x => x.hs.blank ? `${x.sku} has no HS code` : x.hs.hasLetters ? `${x.sku}: “${x.hs.raw}” has letters` : `${x.sku}: “${x.hs.raw}” is ${x.hs.digits.length} digits`;
+      const ev1 = bad.map(hsBrief).filter(Boolean).slice(0, 3);
+      return { head: bad.length === 1 ? one(bad[0]) : `${bad.length} items need a 6-digit HS code`, lines: ev1.length ? ev1 : ['No suggestion — look it up on the UK Trade Tariff'] };
+    }
+    case 'R-02': { const m = /(over|under) by (£[\d,.]+ \([\d.]+%\))/.exec(d), left = /equals (\S+?)'s line value/.exec(d);
+      return { head: `Declared ${PF.gbp(b.declared)} · items ${PF.gbp(c.computed)}`, line: [m ? `${m[1][0].toUpperCase()}${m[1].slice(1)} by ${m[2]}` : null, left ? `${left[1]} looks left out` : null].filter(Boolean).join(' · ') }; }
+    case 'R-04': { const m = /\((\d[\d,]* (?:extra|short))\)/.exec(d); return { head: `Booking ${PF.fmtNum(b.cartons)} cartons · items ${PF.fmtNum(c.computed)}`, line: m ? m[1] : null }; }
+    case 'R-05': { const r = ev.rec, f = r && r.fixes[0], o = f && r.opts.find(x => x.carrier === f.carrier);
+      return { head: r ? `${PF.kg(r.wpp)} per pallet · ${r.chosen.carrier} max ${r.chosen.maxW} kg` : words(firstPart(d), 12),
+        line: f ? `Best fix: ${f.type === 'switch' ? f.carrier : `${f.pallets} pallets${f.carrier !== r.chosen.carrier ? ' on ' + f.carrier : ''}`} · ${PF.gbp(f.cost)}${o ? ` · ${o.transit} days` : ''}` : null }; }
+    case 'R-06': { const hits = [...d.matchAll(/(\S+) \(“[^”]*”\)(?: is |: )([^—.(]+)/g)].map(m => `${m[1]}: ${m[2].trim().replace(/^it may contain an? /, 'may contain ')}`);
+      return { head: c.status === 'check' ? 'Possible dangerous goods' : 'Dangerous goods in the load', lines: hits.length ? hits.slice(0, 3) : [words(firstPart(d), 12)] }; }
+    case 'R-07': { const m = /Gross weight ([\d,.]+ kg) is less than the goods alone \(([\d,.]+ kg)/.exec(d), s2 = /— ([\d,.]+ kg) short/.exec(d);
+      return { head: m ? `Gross ${m[1]} · goods alone ${m[2]}` : words(firstPart(d), 12), line: s2 ? `${s2[1]} short before cartons and pallets` : null }; }
+    case 'R-08': return { head: 'No warehouse delivery slot booked', line: ev.eta ? `Delivery est. ${PF.fmtDate(ev.eta.arrive)}${ev.eta.bufferDays ? ` (+${ev.eta.bufferDays} days to book)` : ''}` : null };
+    case 'R-10': return { head: `Ready date ${PF.fmtDate(b.ready)} is in the past`, line: `Today is ${PF.fmtDate(ev.today)}` };
+    default: return { head: words(firstPart(d), 12) };
+  }
 }
 function reportEl(ev, ctx) {
   const { b, checks, dataIssues, advisories, status, rec, eta } = ev;
@@ -176,12 +216,17 @@ function reportEl(ev, ctx) {
       ].filter(Boolean).join(' · '))));
 
   const issueList = issues.length ? h('ol', { class: 'issues', 'aria-label': 'Issues' }, issues.map(it => {
-    const acts = it.check ? fixActions(it.check, ev, ctx.mode) : [];
+    const acts = it.check ? fixActions(it.check, ev, ctx.mode) : [], br = brief(it, ev);
     return h('li', { class: 'issue s-' + it.sev },
-      h('div', { class: 'issue-top' }, h('span', { class: 'sev' }, SEV_WORD[it.sev]), it.id ? h('span', { class: 'rid' }, it.id) : h('span', { class: 'rid' }, 'Data'), h('span', { class: 'rtitle' }, it.kind === 'rule' ? it.title : it.title)),
-      h('p', { class: 'what' }, it.detail),
-      it.fix ? h('p', { class: 'fix' }, h('b', null, 'How to fix: '), it.fix) : null,
-      acts.length ? h('div', { class: 'fix-acts' }, acts.map(a => h('button', { class: 'btn small', type: 'button', onclick: () => ctx.apply(a) }, a.label))) : null);
+      h('div', { class: 'issue-top' }, h('span', { class: 'sev' }, SEV_WORD[it.sev]), h('span', { class: 'rid', title: it.title }, it.id || it.title)),
+      h('p', { class: 'what', title: it.detail }, br.head),
+      ...(br.lines || (br.line ? [br.line] : [])).map(l => h('p', { class: 'evid' }, l)),
+      // With no button, the first step of the fix stays visible so the reviewer still knows what to do.
+      !acts.length && it.fix ? h('p', { class: 'fix' }, words(firstPart(it.fix), 14)) : null,
+      acts.length ? h('div', { class: 'fix-acts' }, acts.map((a, k) => h('button', { class: 'btn small' + (k ? ' ghost' : ''), type: 'button', onclick: () => ctx.apply(a) }, a.label))) : null,
+      h('details', { class: 'why' }, h('summary', null, 'Why'),
+        it.kind === 'rule' ? h('p', { class: 'rtitle' }, `${it.id}: ${it.title}`) : null,
+        h('p', null, it.detail), it.fix ? h('p', null, h('b', null, 'How to fix: '), it.fix) : null));
   })) : h('p', { class: 'allclear' }, 'No problems found — every rulebook check passed.');
 
   const passedEl = h('details', { class: 'passed' }, h('summary', null, `${passed.length} check${passed.length === 1 ? '' : 's'} passed${cannot.length ? `, ${cannot.length} couldn't run` : ''}`),
@@ -235,7 +280,11 @@ function reportEl(ev, ctx) {
 
   const stamp = hsStamp() ? h('p', { class: 'note hsstamp' }, hsStamp()) : null;
   const hist = ctx.history ? historyEl(ctx.history(ev), 'History for this booking') : null;
-  return h('div', { class: 'report' }, head, routeEl(ev), reviewEl(ev, ctx), issueList, passedEl, adv, carrierEl, confEl, inv, stamp, hist);
+  // Long sections fold to one line until the booking is clean, so the decisions above stay in view.
+  const fold = (el, line) => el ? h('details', { class: 'fold', open: status === 'Green' }, h('summary', null, line), el) : null;
+  const carrierFold = rec ? fold(carrierEl, `Carrier · ${PF.label(rec.chosen)} · ${PF.gbp(rec.chosen.cost)} · ${rec.chosen.transit} days${rec.chosen.fits === false ? ' · over limit' : ''}`) : null;
+  const confFold = fold(confEl, status === 'Red' ? 'Booking summary · after the must-fix items are cleared' : 'Booking summary and next steps');
+  return h('div', { class: 'report' }, head, routeEl(ev), reviewEl(ev, ctx), issueList, passedEl, adv, carrierFold, confFold, inv, stamp, hist);
 }
 
 function planEl(ev, ctx) {
