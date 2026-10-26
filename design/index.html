@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Preflight Design Previews</title>
+<style>
+:root{--bg:#111214;--panel:#1A1C1F;--line:#2A2D31;--ink:#EDEDED;--mute:#8C9097;--accent:#FF5A1F}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font:14px/1.4 ui-sans-serif,system-ui,-apple-system,sans-serif;display:flex;flex-direction:column}
+header{display:flex;align-items:center;gap:16px;padding:10px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+h1{font-size:14px;font-weight:600;margin-right:8px}
+.tabs,.vp{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:3px}
+button,a.open{font:inherit;color:var(--mute);background:none;border:0;cursor:pointer;padding:7px 14px;border-radius:999px;text-decoration:none;transition:background .2s,color .2s}
+button[aria-pressed=true]{background:var(--ink);color:var(--bg)}
+button:hover,a.open:hover{color:var(--ink)}
+button[aria-pressed=true]:hover{color:var(--bg)}
+.note{color:var(--mute);font-size:12.5px;flex:1;min-width:200px}
+a.open{border:1px solid var(--line)}
+main{flex:1;display:flex;justify-content:center;background:repeating-conic-gradient(#151618 0 25%,#121315 0 50%) 0 0/24px 24px;min-height:0}
+iframe{border:0;width:100%;height:100%;background:#fff;transition:width .35s cubic-bezier(.2,.7,.2,1)}
+main.mobile iframe{width:390px;border-left:1px solid var(--line);border-right:1px solid var(--line)}
+kbd{font:11px ui-monospace,Menlo,monospace;border:1px solid var(--line);border-radius:4px;padding:1px 5px;color:var(--mute)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Preflight · design previews</h1>
+  <div class="tabs" id="tabs">
+    <button data-f="control-tower.html" aria-pressed="true">1 · Control Tower</button>
+    <button data-f="paper-manifest.html" aria-pressed="false">2 · Paper Manifest</button>
+    <button data-f="night-route.html" aria-pressed="false">3 · Night Route</button>
+    <button data-f="night-manifest.html" aria-pressed="false">4 · Night Manifest</button>
+  </div>
+  <div class="vp" id="vp">
+    <button data-v="desktop" aria-pressed="true">Desktop</button>
+    <button data-v="mobile" aria-pressed="false">Mobile 390</button>
+  </div>
+  <span class="note" id="note"></span>
+  <a class="open" id="open" href="control-tower.html" target="_blank" rel="noopener">Open full ↗</a>
+</header>
+<main id="main"><iframe id="frame" src="control-tower.html" title="Design preview"></iframe></main>
+<script>
+const NOTES = {
+  'control-tower.html': 'Dark ops console · signal orange · mono labels · chevron "gate" motif. <kbd>1</kbd>–<kbd>4</kbd> to switch',
+  'paper-manifest.html': 'Customs-form paper · serif display · stamps thud in · rate-sheet carriers. <kbd>1</kbd>–<kbd>4</kbd> to switch',
+  'night-route.html': 'Deep navy · animated UK→EU route map · glass cards · cyan/amber. <kbd>1</kbd>–<kbd>4</kbd> to switch',
+  'night-manifest.html': 'Paper × Night · stamped manifest on a navy route map · route lights up once inspected · paper tickets & rate sheet. <kbd>1</kbd>–<kbd>4</kbd> to switch',
+};
+const frame = document.getElementById('frame'), open = document.getElementById('open'), note = document.getElementById('note'), main = document.getElementById('main');
+const tabs = [...document.querySelectorAll('#tabs button')];
+function show(f) {
+  tabs.forEach(b => b.setAttribute('aria-pressed', b.dataset.f === f));
+  frame.src = f; open.href = f; note.innerHTML = NOTES[f];
+  try { localStorage.setItem('pf-preview', f); } catch (e) {}
+}
+tabs.forEach(b => b.addEventListener('click', () => show(b.dataset.f)));
+document.querySelectorAll('#vp button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('#vp button').forEach(x => x.setAttribute('aria-pressed', x === b));
+  main.classList.toggle('mobile', b.dataset.v === 'mobile');
+}));
+addEventListener('keydown', e => { const i = +e.key - 1; if (tabs[i]) show(tabs[i].dataset.f); });
+let saved = null; try { saved = localStorage.getItem('pf-preview'); } catch (e) {}
+show(NOTES[saved] ? saved : 'control-tower.html');
+</script>
+</body>
+</html>

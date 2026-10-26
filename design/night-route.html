@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Preflight — Night Route</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  color-scheme:dark;
+  --bg:#070B16; --bg-2:#0B1224; --glass:rgba(255,255,255,.035); --glass-2:rgba(255,255,255,.06);
+  --edge:rgba(255,255,255,.08); --edge-2:rgba(255,255,255,.14);
+  --ink:#E8EEF9; --mute:#8794AF; --dim:#55607A;
+  --cyan:#4FD1FF; --amber:#FFB547; --red:#FF5C7A; --pass:#4BE3A4;
+  --ease:cubic-bezier(.2,.7,.2,1);
+  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);font:300 16px/1.6 "Sora",system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;background:
+  radial-gradient(900px 500px at 85% -10%,rgba(79,209,255,.12),transparent 60%),
+  radial-gradient(700px 400px at -10% 40%,rgba(255,181,71,.06),transparent 60%)}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+.wrap{max-width:1200px;margin:0 auto;padding:0 32px}
+.mono{font-family:var(--mono);font-size:12px;letter-spacing:.04em}
+.num{font-variant-numeric:tabular-nums}
+.eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--cyan);display:inline-flex;gap:10px;align-items:center}
+.eyebrow::before{content:"";width:18px;height:1px;background:currentColor}
+.glass{background:var(--glass);border:1px solid var(--edge);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-radius:18px}
+
+/* nav */
+nav{position:sticky;top:0;z-index:30;padding:14px 0}
+nav .bar{display:flex;align-items:center;justify-content:space-between;padding:10px 12px 10px 20px;border-radius:999px;background:rgba(11,18,36,.6);border:1px solid var(--edge);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.logo{display:flex;align-items:center;gap:10px;font-weight:500;font-size:16px}
+.logo i{width:22px;height:22px;border-radius:50%;background:conic-gradient(from 200deg,var(--cyan),var(--amber),var(--cyan));display:grid;place-items:center}
+.logo i::after{content:"";width:10px;height:10px;border-radius:50%;background:var(--bg)}
+.links{display:flex;gap:26px;font-size:14px;color:var(--mute)}
+.links a{transition:color .2s}
+.links a:hover{color:var(--ink)}
+.btn{display:inline-flex;align-items:center;gap:10px;padding:11px 20px;border-radius:999px;font-size:14px;font-weight:500;background:var(--ink);color:var(--bg);transition:transform .25s var(--ease),box-shadow .25s var(--ease)}
+.btn:hover{transform:translateY(-1px);box-shadow:0 10px 30px -10px rgba(79,209,255,.6)}
+.btn.ghost{background:var(--glass-2);color:var(--ink);border:1px solid var(--edge-2)}
+
+/* hero */
+.hero{padding:64px 0 40px}
+.hero .wrap{display:grid;grid-template-columns:.9fr 1.1fr;gap:40px;align-items:center}
+h1{font-size:clamp(42px,5.8vw,78px);line-height:1.02;letter-spacing:-.04em;font-weight:500}
+h1 span{background:linear-gradient(90deg,var(--cyan),#A6E9FF 50%,var(--amber));-webkit-background-clip:text;background-clip:text;color:transparent}
+.lede{margin:22px 0 32px;color:var(--mute);font-size:17.5px;max-width:34ch}
+.hero-cta{display:flex;gap:12px;flex-wrap:wrap}
+.lanes{margin-top:36px;display:flex;gap:18px;flex-wrap:wrap}
+.lanes span{font-family:var(--mono);font-size:12px;color:var(--mute);display:flex;align-items:center;gap:8px}
+.lanes span::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--cyan);box-shadow:0 0 10px var(--cyan)}
+
+.mapbox{position:relative;aspect-ratio:610/430}
+.mapbox svg{width:100%;height:100%;display:block}
+.city circle.core{fill:var(--ink)}
+.city text{font-family:var(--mono);font-size:11px;fill:var(--mute);letter-spacing:.06em}
+.city .halo{fill:var(--cyan);opacity:.18;transform-origin:center;transform-box:fill-box;animation:pulse 2.8s var(--ease) infinite}
+@keyframes pulse{0%{transform:scale(.6);opacity:.35}100%{transform:scale(2.4);opacity:0}}
+.lane{fill:none;stroke:rgba(255,255,255,.12);stroke-width:1.2;stroke-dasharray:3 5}
+.lane.live{stroke:url(#gLive);stroke-width:2;stroke-dasharray:none;stroke-linecap:round}
+.draw{stroke-dasharray:var(--len);stroke-dashoffset:var(--len);animation:draw 2.2s var(--ease) .3s forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+
+.check{position:absolute;right:0;bottom:-8px;width:min(330px,78%);padding:18px}
+.check .hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.check .hd b{font-weight:500;font-size:14px}
+.ring{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.ring svg{width:56px;height:56px;transform:rotate(-90deg)}
+.ring .bgc{fill:none;stroke:var(--edge-2);stroke-width:5}
+.ring .fg{fill:none;stroke:var(--cyan);stroke-width:5;stroke-linecap:round;stroke-dasharray:150.8;stroke-dashoffset:150.8;transition:stroke-dashoffset .25s linear}
+.ring .lbl b{display:block;font-size:20px;font-weight:500}
+.ring .lbl span{font-size:12.5px;color:var(--mute)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;min-height:58px;align-content:flex-start}
+.chip{font-family:var(--mono);font-size:11px;padding:4px 9px;border-radius:999px;border:1px solid;opacity:0;transform:translateY(6px);transition:opacity .35s,transform .35s var(--ease)}
+.chip.on{opacity:1;transform:none}
+.chip.red{color:var(--red);border-color:rgba(255,92,122,.4);background:rgba(255,92,122,.08)}
+.chip.amber{color:var(--amber);border-color:rgba(255,181,71,.4);background:rgba(255,181,71,.08)}
+.rec{margin-top:12px;padding-top:12px;border-top:1px solid var(--edge);font-size:13px;color:var(--mute);opacity:0;transition:opacity .5s}
+.rec.on{opacity:1}
+.rec b{color:var(--ink);font-weight:500}
+.replay{font-family:var(--mono);font-size:11px;color:var(--cyan)}
+
+/* sections */
+section{padding:110px 0}
+.sec-head{text-align:center;max-width:720px;margin:0 auto 56px}
+h2{font-size:clamp(32px,4.2vw,54px);line-height:1.05;letter-spacing:-.035em;font-weight:500;margin:16px 0 14px}
+.sec-head p{color:var(--mute)}
+
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.stat{padding:26px 24px;position:relative;overflow:hidden}
+.stat::after{content:"";position:absolute;inset:auto -20% -60% auto;width:140px;height:140px;border-radius:50%;background:radial-gradient(var(--cyan),transparent 70%);opacity:.12}
+.stat b{display:block;font-size:clamp(38px,4.6vw,56px);font-weight:400;letter-spacing:-.04em;line-height:1.05}
+.stat span{color:var(--mute);font-size:14px}
+
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.step{padding:28px;transition:transform .35s var(--ease),border-color .35s}
+.step:hover{transform:translateY(-4px);border-color:var(--edge-2)}
+.step .n{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;font-family:var(--mono);font-size:13px;color:var(--cyan);background:rgba(79,209,255,.08);border:1px solid rgba(79,209,255,.25)}
+.step h3{font-size:21px;font-weight:500;letter-spacing:-.02em;margin:26px 0 8px}
+.step p{color:var(--mute);font-size:15px}
+
+.tally{display:flex;justify-content:center;gap:12px;margin-bottom:26px;flex-wrap:wrap}
+.tally span{font-family:var(--mono);font-size:12px;padding:6px 12px;border-radius:999px;border:1px solid var(--edge);color:var(--mute)}
+.tally b{color:var(--ink);font-weight:500}
+.issues{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.issue{padding:24px;position:relative;overflow:hidden;transition:border-color .4s}
+.issue::before{content:"";position:absolute;top:-80px;left:-80px;width:200px;height:200px;border-radius:50%;background:radial-gradient(var(--red),transparent 70%);opacity:.14;transition:background .4s}
+.issue.am::before{background:radial-gradient(var(--amber),transparent 70%)}
+.issue.done::before{background:radial-gradient(var(--pass),transparent 70%)}
+.issue.done{border-color:rgba(75,227,164,.3)}
+.issue .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.sev{font-family:var(--mono);font-size:11px;padding:4px 10px;border-radius:999px;color:var(--red);background:rgba(255,92,122,.1);border:1px solid rgba(255,92,122,.35)}
+.issue.am .sev{color:var(--amber);background:rgba(255,181,71,.1);border-color:rgba(255,181,71,.35)}
+.issue.done .sev{color:var(--pass);background:rgba(75,227,164,.1);border-color:rgba(75,227,164,.35)}
+.issue h4{font-size:18.5px;font-weight:500;letter-spacing:-.01em;margin-bottom:6px}
+.issue p{color:var(--mute);font-size:14.5px}
+.issue .fix{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:18px}
+.issue .fix small{font-family:var(--mono);font-size:11.5px;color:var(--mute)}
+.issue .btn{padding:8px 14px;font-size:13px}
+.issue.done .btn{background:transparent;color:var(--pass);border:1px solid rgba(75,227,164,.4);pointer-events:none}
+
+.seg{display:flex;justify-content:center;margin:0 auto 26px;width:max-content;max-width:100%;padding:5px;border-radius:999px;position:relative;flex-wrap:wrap}
+.seg button{position:relative;z-index:1;padding:9px 18px;font-size:14px;color:var(--mute);border-radius:999px;transition:color .25s}
+.seg button[aria-pressed=true]{color:var(--bg);font-weight:500}
+.seg .thumb{position:absolute;border-radius:999px;background:linear-gradient(90deg,var(--cyan),#A6E9FF);transition:left .4s var(--ease),width .4s var(--ease),top .4s var(--ease)}
+.carriers{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.carrier{padding:26px;position:relative;transition:transform .45s var(--ease),border-color .35s,box-shadow .35s}
+.carrier.best{border-color:rgba(79,209,255,.5);box-shadow:0 30px 60px -30px rgba(79,209,255,.45);transform:translateY(-6px)}
+.carrier .badge{position:absolute;top:18px;right:18px;font-family:var(--mono);font-size:10.5px;padding:4px 10px;border-radius:999px;background:var(--cyan);color:var(--bg);opacity:0;transition:opacity .3s}
+.carrier.best .badge{opacity:1}
+.carrier .rk{font-family:var(--mono);font-size:12px;color:var(--dim)}
+.carrier h3{font-size:22px;font-weight:500;margin:8px 0 2px}
+.carrier .svc{font-size:13.5px;color:var(--mute)}
+.carrier dl{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin:22px 0 18px}
+.carrier dt{font-family:var(--mono);font-size:10.5px;color:var(--dim);letter-spacing:.08em}
+.carrier dd{font-size:18px;font-weight:400}
+.meter{height:6px;border-radius:999px;background:var(--edge);overflow:hidden}
+.meter i{display:block;height:100%;border-radius:inherit;background:var(--pass);transition:width 1s var(--ease)}
+.meter.no i{background:var(--red)}
+.fit{margin-top:8px;font-family:var(--mono);font-size:11.5px}
+.fit.ok{color:var(--pass)} .fit.no{color:var(--red)}
+.why{text-align:center;margin:30px auto 0;max-width:60ch;color:var(--mute);min-height:52px}
+.why b{color:var(--ink);font-weight:500}
+
+.cta{padding:76px 40px;text-align:center;position:relative;overflow:hidden}
+.cta svg.bg{position:absolute;inset:0;width:100%;height:100%;opacity:.5;pointer-events:none}
+.cta h2{position:relative;max-width:16ch;margin:16px auto}
+.cta p{position:relative;color:var(--mute);margin-bottom:30px}
+.cta .hero-cta{position:relative;justify-content:center}
+footer{padding:36px 0 56px;color:var(--dim)}
+footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+
+.rv.in{animation:rise .7s var(--ease) both}
+@keyframes rise{from{opacity:.35;transform:translateY(14px)}}
+
+@media (max-width:960px){
+  .hero .wrap{grid-template-columns:1fr}
+  .links{display:none}
+  .stats{grid-template-columns:1fr 1fr}
+  .steps,.issues,.carriers{grid-template-columns:1fr}
+  .carrier.best{transform:none}
+}
+@media (max-width:560px){
+  .wrap{padding:0 16px}
+  nav .btn span{display:none}
+  .check{position:relative;width:100%;right:auto;bottom:auto;margin-top:-30px}
+  .mapbox{aspect-ratio:auto}
+  .cta{padding:52px 20px}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+  .rv{opacity:1;transform:none;filter:none}
+  .draw{stroke-dashoffset:0}
+}
+</style>
+</head>
+<body>
+
+<nav><div class="wrap"><div class="bar">
+  <a href="#" class="logo"><i></i>Preflight</a>
+  <div class="links"><a href="#how">How it works</a><a href="#issues">Checks</a><a href="#carriers">Carriers</a><a href="#rules">Rulebook</a></div>
+  <a href="#cta" class="btn"><span>Check a booking</span> →</a>
+</div></div></nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div>
+      <div class="eyebrow rv">UK → Germany · France · Netherlands</div>
+      <h1 class="rv" style="margin-top:18px">Clear the route <span>before</span> the truck rolls.</h1>
+      <p class="lede rv">Preflight checks every booking against ten freight rules while you type, catches what customs and carriers would reject, and suggests the best carrier for your priority.</p>
+      <div class="hero-cta rv"><a href="#cta" class="btn">Book by chat →</a><a href="#issues" class="btn ghost">Upload a sheet</a></div>
+      <div class="lanes rv"><span>3 destinations</span><span>3 carriers</span><span>4 origin hubs</span></div>
+    </div>
+
+    <div class="mapbox rv">
+      <svg viewBox="90 95 610 430" aria-label="Route map UK to EU">
+        <defs>
+          <linearGradient id="gLive" x1="0" x2="1"><stop offset="0" stop-color="#4FD1FF"/><stop offset="1" stop-color="#FFB547"/></linearGradient>
+          <pattern id="dots" width="16" height="16" patternUnits="userSpaceOnUse"><circle cx="1.5" cy="1.5" r="1.1" fill="rgba(255,255,255,.07)"/></pattern>
+          <radialGradient id="fade" cx=".5" cy=".5" r=".6"><stop offset=".55" stop-color="#fff"/><stop offset="1" stop-color="#000"/></radialGradient>
+          <mask id="m"><rect width="700" height="540" fill="url(#fade)"/></mask>
+        </defs>
+        <rect width="700" height="540" fill="url(#dots)" mask="url(#m)"/>
+        <!-- background lanes -->
+        <path class="lane" d="M200 150 Q300 330 355 440"/>
+        <path class="lane" d="M215 245 Q310 190 395 205"/>
+        <path class="lane" d="M215 245 Q250 300 300 330"/>
+        <path class="lane" d="M200 150 Q350 90 500 140"/>
+        <path class="lane" d="M215 245 Q350 250 470 300"/>
+        <!-- live lane -->
+        <path id="live" class="lane live draw" d="M175 170 Q380 50 590 170" style="--len:480"/>
+        <circle r="5" fill="#FFB547"><animateMotion dur="5s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="spline" keySplines=".4 0 .2 1"><mpath href="#live"/></animateMotion></circle>
+        <circle r="3.5" fill="#4FD1FF" opacity=".8"><animateMotion dur="7s" begin="1s" repeatCount="indefinite" path="M200 150 Q300 330 355 440"/></circle>
+        <circle r="3.5" fill="#4FD1FF" opacity=".8"><animateMotion dur="6s" begin="2s" repeatCount="indefinite" path="M215 245 Q310 190 395 205"/></circle>
+        <g class="city"><circle class="halo" cx="175" cy="170" r="10"/><circle class="core" cx="175" cy="170" r="4"/><text x="120" y="196">MANCHESTER</text></g>
+        <g class="city"><circle class="core" cx="200" cy="150" r="3"/><text x="180" y="138">LEEDS</text></g>
+        <g class="city"><circle class="core" cx="215" cy="245" r="3"/><text x="170" y="268">LONDON</text></g>
+        <g class="city"><circle class="core" cx="395" cy="205" r="3"/><text x="405" y="210">AMSTERDAM</text></g>
+        <g class="city"><circle class="core" cx="500" cy="140" r="3"/><text x="480" y="128">HAMBURG</text></g>
+        <g class="city"><circle class="halo" cx="590" cy="170" r="10" style="animation-delay:1.4s"/><circle class="core" cx="590" cy="170" r="4"/><text x="565" y="196">BERLIN DC</text></g>
+        <g class="city"><circle class="core" cx="470" cy="300" r="3"/><text x="480" y="305">FRANKFURT</text></g>
+        <g class="city"><circle class="core" cx="300" cy="330" r="3"/><text x="252" y="352">PARIS</text></g>
+        <g class="city"><circle class="core" cx="355" cy="440" r="3"/><text x="368" y="445">LYON</text></g>
+      </svg>
+
+      <div class="check glass" aria-live="polite">
+        <div class="hd"><b>PF-0042 · 2 pallets</b><button class="replay" id="replay">↻ replay</button></div>
+        <div class="ring">
+          <svg viewBox="0 0 56 56"><circle class="bgc" cx="28" cy="28" r="24"/><circle class="fg" id="ringfg" cx="28" cy="28" r="24"/></svg>
+          <div class="lbl"><b class="num" id="ringn">0 / 10</b><span>rules checked</span></div>
+        </div>
+        <div class="chips" id="chips">
+          <span class="chip red">R-01 HS code</span><span class="chip red">R-05 480 kg &gt; 400</span><span class="chip red">R-06 lithium</span><span class="chip amber">R-08 appointment</span>
+        </div>
+        <div class="rec" id="rec">Suggested: <b>Carrier B · £440 · 3 days</b>, fits as booked</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section id="rules">
+  <div class="wrap">
+    <div class="sec-head rv"><div class="eyebrow">The rulebook</div><h2>Ten rules, checked on every change.</h2><p>Red stops the shipment and Amber needs a look. Anything outside the rulebook is labelled Data or Advisory.</p></div>
+    <div class="stats">
+      <div class="stat glass rv"><b class="num" data-count="10">0</b><span>Rules, R-01 to R-10</span></div>
+      <div class="stat glass rv"><b class="num" data-count="111">0</b><span>Automated tests</span></div>
+      <div class="stat glass rv"><b class="num" data-count="20">0</b><span>Planted-error bookings</span></div>
+      <div class="stat glass rv"><b class="num" data-count="0">0</b><span>Crashes on bad input</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="how" style="padding-top:0">
+  <div class="wrap">
+    <div class="sec-head rv"><div class="eyebrow">How it works</div><h2>Say it, check it, send it.</h2></div>
+    <div class="steps">
+      <div class="step glass rv"><span class="n">01</span><h3>Book by chat</h3><p>Write it the way you'd say it. Preflight asks only for what's missing and handles edits like "add a pallet".</p></div>
+      <div class="step glass rv"><span class="n">02</span><h3>Or drop a file</h3><p>Upload your Bookings and Items sheets. Every cell is normalised, and anything odd becomes a plain-language data issue.</p></div>
+      <div class="step glass rv"><span class="n">03</span><h3>Fix and confirm</h3><p>Apply fixes in one click. You get a plain-language confirmation and a list of what happens next.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="issues" style="padding-top:0">
+  <div class="wrap">
+    <div class="sec-head rv"><div class="eyebrow">What it catches</div><h2>Every flag comes with a fix.</h2><p>Try a fix below. The counts update.</p></div>
+    <div class="tally rv"><span>Red <b id="t-red">3</b></span><span>Amber <b id="t-amb">1</b></span><span>Fixed <b id="t-fix">0</b></span></div>
+    <div class="issues">
+      <article class="issue glass rv" data-sev="red"><div class="top"><span class="sev">R-01 · Red</span><span class="mono" style="color:var(--dim)">Ceramic mug</span></div>
+        <h4>HS code "69120" is too short</h4><p>Five digits. It looks like Excel dropped the leading zero.</p>
+        <div class="fix"><small>Suggested → 691200</small><button class="btn">Use 691200</button></div></article>
+      <article class="issue glass rv" data-sev="red"><div class="top"><span class="sev">R-05 · Red</span><span class="mono" style="color:var(--dim)">480 kg / pallet</span></div>
+        <h4>Too heavy for the fastest carrier</h4><p>Carrier C's limit is 400 kg per pallet. Re-pack or switch carrier.</p>
+        <div class="fix"><small>3 pallets · £1,020</small><button class="btn">Re-pack</button></div></article>
+      <article class="issue glass rv" data-sev="red"><div class="top"><span class="sev">R-06 · Red</span><span class="mono" style="color:var(--dim)">PB-10K</span></div>
+        <h4>Power bank is dangerous goods</h4><p>Lithium batteries can't go on these road services, which don't carry ADR goods.</p>
+        <div class="fix"><small>Remove · totals update</small><button class="btn">Remove item</button></div></article>
+      <article class="issue am glass rv" data-sev="amber"><div class="top"><span class="sev">R-08 · Amber</span><span class="mono" style="color:var(--dim)">Berlin DC</span></div>
+        <h4>Warehouse slot not booked</h4><p>Deliveries to a warehouse need an appointment. Book one for the ETA date.</p>
+        <div class="fix"><small>Wed 4 Nov · 08:00–12:00</small><button class="btn">Book slot</button></div></article>
+    </div>
+  </div>
+</section>
+
+<section id="carriers" style="padding-top:0">
+  <div class="wrap">
+    <div class="sec-head rv"><div class="eyebrow">Carrier pick</div><h2>Pick a priority. Watch it re-rank.</h2><p>2 pallets · 960 kg · Manchester → Berlin</p></div>
+    <div class="seg glass rv" id="seg">
+      <span class="thumb"></span>
+      <button data-p="cheapest" aria-pressed="false">Cheapest</button>
+      <button data-p="fastest" aria-pressed="true">Fastest</button>
+      <button data-p="reliable" aria-pressed="false">Most reliable</button>
+      <button data-p="balanced" aria-pressed="false">Balanced</button>
+    </div>
+    <div class="carriers rv" id="carrierlist"></div>
+    <p class="why rv" id="why"></p>
+  </div>
+</section>
+
+<section id="cta" style="padding-top:0">
+  <div class="wrap">
+    <div class="cta glass rv">
+      <svg class="bg" viewBox="0 0 1000 300" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M0 240 Q250 40 500 160 T1000 80" fill="none" stroke="url(#gLive)" stroke-width="1.5" stroke-dasharray="4 8"/>
+        <path d="M0 280 Q300 120 600 220 T1000 140" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="1"/>
+      </svg>
+      <div class="eyebrow">No login · runs in your browser</div>
+      <h2>Send every pallet out clean.</h2>
+      <p>One file, no backend. Your data stays on your device.</p>
+      <div class="hero-cta"><a href="#" class="btn">Open Preflight →</a><a href="#" class="btn ghost">Sample workbook</a></div>
+    </div>
+  </div>
+</section>
+
+<footer><div class="wrap mono"><span>© 2026 Preflight</span><span>Ops Hackathon · Case 2</span></div></footer>
+
+<script>
+(() => {
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduce) document.querySelectorAll('svg').forEach(s => s.pauseAnimations && s.pauseAnimations());
+
+  /* ---------- hero check card ---------- */
+  const fg = document.getElementById('ringfg'), n = document.getElementById('ringn');
+  const chips = [...document.querySelectorAll('#chips .chip')], rec = document.getElementById('rec');
+  const HIT_AT = { 1: 0, 5: 1, 6: 2, 8: 3 };
+  const C_LEN = 150.8;
+  let timers = [];
+  const later = (fn, ms) => timers.push(setTimeout(fn, ms));
+  function step(i) {
+    fg.style.strokeDashoffset = C_LEN * (1 - i / 10);
+    n.textContent = i + ' / 10';
+    if (HIT_AT[i] !== undefined) chips[HIT_AT[i]].classList.add('on');
+  }
+  function run() {
+    timers.forEach(clearTimeout); timers = [];
+    chips.forEach(c => c.classList.remove('on')); rec.classList.remove('on'); step(0);
+    if (reduce) { for (let i = 1; i <= 10; i++) step(i); rec.classList.add('on'); return; }
+    for (let i = 1; i <= 10; i++) later(() => step(i), 600 + i * 230);
+    later(() => rec.classList.add('on'), 600 + 11 * 230);
+  }
+  document.getElementById('replay').addEventListener('click', run);
+
+  /* ---------- reveal + counters ---------- */
+  const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { threshold: .12 });
+  document.querySelectorAll('.rv').forEach(el => io.observe(el));
+  const cio = new IntersectionObserver(es => es.forEach(e => {
+    if (!e.isIntersecting) return; cio.unobserve(e.target);
+    const el = e.target, to = +el.dataset.count;
+    if (reduce || !to) { el.textContent = to; return; }
+    const t0 = performance.now();
+    const tick = t => { const k = Math.min(1, (t - t0) / 1100); el.textContent = Math.round(to * (1 - Math.pow(1 - k, 3))); if (k < 1) requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+  }), { threshold: .6 });
+  document.querySelectorAll('[data-count]').forEach(el => cio.observe(el));
+
+  /* ---------- fixes ---------- */
+  const tR = document.getElementById('t-red'), tA = document.getElementById('t-amb'), tF = document.getElementById('t-fix');
+  document.querySelectorAll('.issue .btn').forEach(b => b.addEventListener('click', () => {
+    const c = b.closest('.issue'); c.classList.add('done');
+    const s = c.querySelector('.sev'); s.textContent = s.textContent.split('·')[0] + '· Fixed';
+    b.textContent = '✓ Applied';
+    if (c.dataset.sev === 'red') tR.textContent = +tR.textContent - 1; else tA.textContent = +tA.textContent - 1;
+    tF.textContent = +tF.textContent + 1;
+  }));
+
+  /* ---------- carriers ---------- */
+  const P = 2, WPP = 480;
+  const C = [
+    { k:'A', name:'Carrier A', svc:'Road economy',  price:180, days:5, on:92, max:500 },
+    { k:'B', name:'Carrier B', svc:'Road standard', price:220, days:3, on:95, max:750 },
+    { k:'C', name:'Carrier C', svc:'Road express',  price:340, days:2, on:98, max:400 },
+  ];
+  const ORDER = {
+    cheapest: [...C].sort((a,b) => a.price - b.price),
+    fastest:  [...C].sort((a,b) => a.days - b.days),
+    reliable: [...C].sort((a,b) => b.on - a.on),
+    balanced: ['B','A','C'].map(k => C.find(c => c.k === k)),
+  };
+  const WHY = {
+    cheapest: '<b>Carrier A</b> is £360 for both pallets, and 480 kg fits its 500 kg limit.',
+    fastest:  '<b>Carrier C</b> is fastest at 2 days but over its 400 kg limit. Re-pack onto 3 pallets (£1,020) or take Carrier B (3 days, £440).',
+    reliable: '<b>Carrier C</b> is on time 98% of the time but fails R-05 as booked. Carrier B is next at 95% and fits.',
+    balanced: '<b>Carrier B</b> balances price, speed and reliability, with weight to spare.',
+  };
+  const grid = document.getElementById('carrierlist');
+  grid.innerHTML = C.map(c => { const ok = WPP <= c.max; return `<div class="carrier glass" data-k="${c.k}">
+    <span class="badge">Recommended</span><span class="rk">#1</span>
+    <h3>${c.name}</h3><div class="svc">${c.svc}</div>
+    <dl><div><dt>COST</dt><dd class="num">£${c.price * P}</dd></div><div><dt>TRANSIT</dt><dd class="num">${c.days}d</dd></div><div><dt>ON-TIME</dt><dd class="num">${c.on}%</dd></div></dl>
+    <div class="meter ${ok ? '' : 'no'}"><i style="width:0" data-w="${Math.min(100, WPP / c.max * 100)}"></i></div>
+    <div class="fit ${ok ? 'ok' : 'no'}">${WPP} / ${c.max} kg per pallet ${ok ? '· fits' : '· over'}</div></div>`; }).join('');
+  const bio = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.querySelectorAll('.meter i').forEach(i => i.style.width = i.dataset.w + '%'); bio.disconnect(); } }), { threshold: .3 });
+  bio.observe(grid);
+
+  const why = document.getElementById('why');
+  function rank(p, animate = true) {
+    const items = [...grid.children];
+    const first = new Map(items.map(el => [el, el.getBoundingClientRect()]));
+    ORDER[p].forEach((c, i) => { const el = grid.querySelector(`[data-k="${c.k}"]`); el.querySelector('.rk').textContent = '#' + (i + 1); el.classList.toggle('best', i === 0); grid.appendChild(el); });
+    if (animate && !reduce) items.forEach(el => {
+      const a = first.get(el), b = el.getBoundingClientRect(), dx = a.left - b.left, dy = a.top - b.top;
+      if (dx || dy) el.animate([{ translate: `${dx}px ${dy}px` }, { translate: '0 0' }], { duration: 500, easing: 'cubic-bezier(.2,.7,.2,1)' });
+    });
+    why.innerHTML = WHY[p];
+  }
+  const seg = document.getElementById('seg'), thumb = seg.querySelector('.thumb');
+  const moveThumb = b => { thumb.style.left = b.offsetLeft + 'px'; thumb.style.top = b.offsetTop + 'px'; thumb.style.width = b.offsetWidth + 'px'; thumb.style.height = b.offsetHeight + 'px'; };
+  seg.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+    seg.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); moveThumb(b); rank(b.dataset.p);
+  }));
+  const init = () => moveThumb(seg.querySelector('[aria-pressed=true]'));
+  rank('fastest', false);
+  document.fonts.ready.then(init); addEventListener('resize', init); init();
+
+  run();
+})();
+</script>
+</body>
+</html>

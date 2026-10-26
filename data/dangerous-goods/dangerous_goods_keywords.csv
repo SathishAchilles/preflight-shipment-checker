@@ -1,0 +1,517 @@
+category_id,keyword,kind
+R06-LI-D,lithium,trigger
+R06-LI-D,li-ion,trigger
+R06-LI-D,li-po,trigger
+R06-LI-D,li-polymer,trigger
+R06-LI-D,lifepo4,trigger
+R06-LI-D,18650,trigger
+R06-LI-D,21700,trigger
+R06-LI-D,cr2032,trigger
+R06-LI-D,cr2025,trigger
+R06-LI-D,cr2016,trigger
+R06-LI-D,cr123a,trigger
+R06-LI-D,power bank,trigger
+R06-LI-D,e-cigarette,trigger
+R06-LI-D,vape,trigger
+R06-LI-D,vape pen,trigger
+R06-LI-D,e-bike,trigger
+R06-LI-D,e-scooter,trigger
+R06-LI-D,hoverboard,trigger
+R06-AE-D,aerosol,trigger
+R06-AE-D,spray can,trigger
+R06-AE-D,spray paint,trigger
+R06-AE-D,hair spray,trigger
+R06-AE-D,deodorant spray,trigger
+R06-AE-D,body spray,trigger
+R06-AE-D,cooking oil spray,trigger
+R06-AE-D,spray deodorant,trigger
+R06-AE-D,spray polish,trigger
+R06-AE-D,spray adhesive,trigger
+R06-AE-D,spray lubricant,trigger
+R06-AE-D,spray foam,trigger
+R06-AE-D,spray starch,trigger
+R06-AE-D,compressed gas,trigger
+R06-AE-D,compressed air,trigger
+R06-AE-D,pressurised can,trigger
+R06-AE-D,pressurised canister,trigger
+R06-AE-D,co2 cartridge,trigger
+R06-AE-D,co2 canister,trigger
+R06-AE-D,cream charger,trigger
+R06-AE-D,nitrous canister,trigger
+R06-AE-D,dry shampoo,trigger
+R06-AE-D,wd-40,trigger
+R06-AE-D,shaving foam,trigger
+R06-FL-D,flammable,trigger
+R06-FL-D,inflammable,trigger
+R06-FL-D,perfume,trigger
+R06-FL-D,eau de parfum,trigger
+R06-FL-D,eau de toilette,trigger
+R06-FL-D,eau de cologne,trigger
+R06-FL-D,cologne,trigger
+R06-FL-D,nail polish,trigger
+R06-FL-D,nail varnish,trigger
+R06-FL-D,acetone,trigger
+R06-FL-D,petrol,trigger
+R06-FL-D,gasoline,trigger
+R06-FL-D,diesel,trigger
+R06-FL-D,kerosene,trigger
+R06-FL-D,paraffin oil,trigger
+R06-FL-D,lighter fluid,trigger
+R06-FL-D,lighter refill,trigger
+R06-FL-D,lighter gas,trigger
+R06-FL-D,methylated spirits,trigger
+R06-FL-D,white spirit,trigger
+R06-FL-D,turpentine,trigger
+R06-FL-D,thinners,trigger
+R06-FL-D,ethanol,trigger
+R06-FL-D,isopropyl,trigger
+R06-FL-D,rubbing alcohol,trigger
+R06-FL-D,hand sanitiser,trigger
+R06-FL-D,hand sanitizer,trigger
+R06-FL-D,solvent-based,trigger
+R06-FL-D,fuel,trigger
+R06-FL-D,lamp oil,trigger
+R06-FL-D,meths,trigger
+R06-LI-P,battery,trigger
+R06-LI-P,batteries,trigger
+R06-LI-P,rechargeable,trigger
+R06-LI-P,bluetooth speaker,trigger
+R06-LI-P,wireless earbuds,trigger
+R06-LI-P,wireless headphones,trigger
+R06-LI-P,smartwatch,trigger
+R06-LI-P,fitness tracker,trigger
+R06-LI-P,cordless,trigger
+R06-LI-P,laptop,trigger
+R06-LI-P,smartphone,trigger
+R06-LI-P,mobile phone,trigger
+R06-LI-P,tablet,trigger
+R06-LI-P,drone,trigger
+R06-LI-P,laptop bag,guard
+R06-LI-P,laptop sleeve,guard
+R06-LI-P,laptop stand,guard
+R06-LI-P,laptop case,guard
+R06-LI-P,phone case,guard
+R06-LI-P,phone cover,guard
+R06-LI-P,phone holder,guard
+R06-LI-P,tablet case,guard
+R06-LI-P,tablet cover,guard
+R06-AE-P,spray,trigger
+R06-AE-P,mist,trigger
+R06-AE-P,spray bottle,guard
+R06-FL-P,paint,trigger
+R06-FL-P,varnish,trigger
+R06-FL-P,glue,trigger
+R06-FL-P,adhesive,trigger
+R06-FL-P,essential oil,trigger
+R06-FL-P,reed diffuser,trigger
+R06-FL-P,diffuser oil,trigger
+R06-FL-P,fragrance oil,trigger
+R06-FL-P,vodka,trigger
+R06-FL-P,whisky,trigger
+R06-FL-P,whiskey,trigger
+R06-FL-P,gin,trigger
+R06-FL-P,rum,trigger
+R06-FL-P,liqueur,trigger
+R06-FL-P,brandy,trigger
+R06-FL-P,spirits,trigger
+R06-FL-P,alcohol,trigger
+R06-FL-P,lighter,trigger
+R06-FL-P,resin,trigger
+R06-FL-P,camping gas,trigger
+R06-FL-P,lighter weight,guard
+R06-FL-P,lighter colour,guard
+R06-FL-P,lighter shade,guard
+R06-ALL,no,negation
+R06-ALL,non,negation
+R06-ALL,without,negation
+R06-ALL,free of,negation
+R06-ALL,zero,negation
+R06-ALL,not,negation
+R06-ALL,excluding,negation
+R06-ALL,free,negation
+R06-ALL,not included,negation
+R06-ALL,excluded,negation
+R06-ALL,not supplied,negation
+R06-ALL,sold separately,negation
+ADR-01,fireworks,trigger
+ADR-01,firework,trigger
+ADR-01,rockets (pyro),trigger
+ADR-01,roman candle,trigger
+ADR-01,sparklers,trigger
+ADR-01,party poppers,trigger
+ADR-01,christmas crackers,trigger
+ADR-01,cracker snaps,trigger
+ADR-01,confetti cannon (pyro),trigger
+ADR-01,indoor fireworks,trigger
+ADR-01,confetti cannon (air/spring),guard
+ADR-01,cracker (food),guard
+ADR-01,firework print,guard
+ADR-01,rocket lamp,guard
+ADR-01,rocket ship toy,guard
+ADR-02,flares,trigger
+ADR-02,hand flare,trigger
+ADR-02,marine flare,trigger
+ADR-02,distress flare,trigger
+ADR-02,smoke grenade,trigger
+ADR-02,smoke bomb,trigger
+ADR-02,coloured smoke,trigger
+ADR-02,smoke flare,trigger
+ADR-02,flare jeans,guard
+ADR-02,lens flare,guard
+ADR-02,flared,guard
+ADR-03,ammunition,trigger
+ADR-03,cartridges,trigger
+ADR-03,shotgun shells,trigger
+ADR-03,blank cartridges,trigger
+ADR-03,nail gun cartridges,trigger
+ADR-03,powder loads,trigger
+ADR-03,primers,trigger
+ADR-03,percussion caps,trigger
+ADR-03,toy caps,trigger
+ADR-03,gunpowder,trigger
+ADR-03,black powder,trigger
+ADR-03,smokeless powder,trigger
+ADR-03,model rocket motor,trigger
+ADR-03,ink cartridge,guard
+ADR-03,toner cartridge,guard
+ADR-03,filter cartridge,guard
+ADR-03,gas cartridge,guard
+ADR-03,cartridge belt (empty),guard
+ADR-04,airbag,trigger
+ADR-04,airbag module,trigger
+ADR-04,seatbelt pretensioner,trigger
+ADR-04,gas generator,trigger
+ADR-04,airbag cover,guard
+ADR-04,airbag light,guard
+ADR-05,butane gas,trigger
+ADR-05,gas cartridge,trigger
+ADR-05,camping gas,trigger
+ADR-05,blowtorch,trigger
+ADR-05,soldering torch,trigger
+ADR-05,lighter refill,trigger
+ADR-05,lighter gas,trigger
+ADR-05,propane,trigger
+ADR-05,lpg cylinder,trigger
+ADR-05,patio heater gas,trigger
+ADR-05,calor,trigger
+ADR-05,gas-free,guard
+ADR-05,gas mark,guard
+ADR-05,gas hob (no cylinder),guard
+ADR-05,gas-look fire (electric),guard
+ADR-06,acetylene,trigger
+ADR-06,oxy-acetylene,trigger
+ADR-07,helium canister,trigger
+ADR-07,balloon gas,trigger
+ADR-07,helium tank,trigger
+ADR-07,co2 cylinder,trigger
+ADR-07,sodastream cylinder,trigger
+ADR-07,co2 refill,trigger
+ADR-07,cream charger,trigger
+ADR-07,nitrous oxide,trigger
+ADR-07,nos canister,trigger
+ADR-07,nitrogen cylinder,trigger
+ADR-07,argon,trigger
+ADR-07,welding gas,trigger
+ADR-07,oxygen cylinder,trigger
+ADR-07,diving cylinder,trigger
+ADR-07,scuba tank (charged),trigger
+ADR-07,helium-free,guard
+ADR-07,co2 neutral,guard
+ADR-07,co2-neutral,guard
+ADR-07,low co2,guard
+ADR-07,empty cylinder (valve open),guard
+ADR-08,fire extinguisher,trigger
+ADR-08,fire blanket,guard
+ADR-08,fire extinguisher sign/bracket,guard
+ADR-09,gas strut,trigger
+ADR-09,gas spring,trigger
+ADR-09,shock absorber,trigger
+ADR-09,air spring,trigger
+ADR-10,fridge,trigger
+ADR-10,freezer,trigger
+ADR-10,dehumidifier,trigger
+ADR-10,air conditioner,trigger
+ADR-10,heat pump (with refrigerant),trigger
+ADR-10,r600a,trigger
+ADR-10,r290,trigger
+ADR-10,fridge magnet,guard
+ADR-10,mini fridge (thermoelectric),guard
+ADR-11,chlorine gas,trigger
+ADR-11,ammonia gas cylinder,trigger
+ADR-11,fumigant gas,trigger
+ADR-12,spirits,trigger
+ADR-12,vodka,trigger
+ADR-12,whisky,trigger
+ADR-12,gin,trigger
+ADR-12,rum,trigger
+ADR-12,absinthe,trigger
+ADR-12,perfume,trigger
+ADR-12,eau de parfum,trigger
+ADR-12,aftershave,trigger
+ADR-12,reed diffuser,trigger
+ADR-12,nail polish,trigger
+ADR-12,nail polish remover,trigger
+ADR-12,acetone,trigger
+ADR-12,hand sanitiser,trigger
+ADR-12,paint (solvent),trigger
+ADR-12,varnish,trigger
+ADR-12,lacquer,trigger
+ADR-12,white spirit,trigger
+ADR-12,turps,trigger
+ADR-12,meths,trigger
+ADR-12,petrol,trigger
+ADR-12,diesel,trigger
+ADR-12,lighter fluid,trigger
+ADR-12,contact adhesive,trigger
+ADR-12,fuel can,trigger
+ADR-12,bioethanol,trigger
+ADR-13,polyester resin kit,trigger
+ADR-13,body filler,trigger
+ADR-13,car body filler,trigger
+ADR-13,fibreglass repair kit,trigger
+ADR-13,"filler (wood, water-based)",guard
+ADR-13,polyfilla,guard
+ADR-14,matches,trigger
+ADR-14,safety matches,trigger
+ADR-14,strike anywhere,trigger
+ADR-14,book matches,trigger
+ADR-14,storm matches,trigger
+ADR-14,firelighters,trigger
+ADR-14,fire lighters,trigger
+ADR-14,firelighter cubes,trigger
+ADR-14,fuel tablets,trigger
+ADR-14,hexamine,trigger
+ADR-14,mothballs,trigger
+ADR-14,naphthalene,trigger
+ADR-14,sulphur powder,trigger
+ADR-14,magnesium fire starter,trigger
+ADR-14,matchbox car,guard
+ADR-14,match day,guard
+ADR-14,matching,guard
+ADR-14,match-fit,guard
+ADR-14,firelighter-free,guard
+ADR-14,match (sports),guard
+ADR-15,celluloid,trigger
+ADR-15,nitrocellulose film,trigger
+ADR-15,metal powder,trigger
+ADR-15,aluminium powder,trigger
+ADR-15,slug pellets (metaldehyde),trigger
+ADR-15,aluminium foil,guard
+ADR-15,aluminium frame,guard
+ADR-16,bbq charcoal,trigger
+ADR-16,charcoal briquettes,trigger
+ADR-16,lumpwood charcoal,trigger
+ADR-16,activated carbon,trigger
+ADR-16,oily rags,trigger
+ADR-16,linseed rags,trigger
+ADR-16,colour run remover,trigger
+ADR-16,dye remover,trigger
+ADR-16,sodium dithionite,trigger
+ADR-16,charcoal grey,guard
+ADR-16,charcoal colour,guard
+ADR-16,charcoal toothpaste,guard
+ADR-16,charcoal (pencil/art),guard
+ADR-16,charcoal filter (cartridge),guard
+ADR-17,calcium carbide,trigger
+ADR-17,carbide lamp,trigger
+ADR-17,sodium metal,trigger
+ADR-17,magnesium powder,trigger
+ADR-17,flameless ration heater,trigger
+ADR-17,water-reactive,trigger
+ADR-18,pool chlorine,trigger
+ADR-18,chlorine granules,trigger
+ADR-18,chlorine tablets,trigger
+ADR-18,shock treatment,trigger
+ADR-18,calcium hypochlorite,trigger
+ADR-18,trichlor,trigger
+ADR-18,dichlor,trigger
+ADR-18,stump remover,trigger
+ADR-18,potassium nitrate,trigger
+ADR-18,saltpetre,trigger
+ADR-18,potassium permanganate,trigger
+ADR-18,sodium chlorate,trigger
+ADR-18,ammonium nitrate,trigger
+ADR-18,oxygen generator,trigger
+ADR-18,hair bleach powder,trigger
+ADR-18,persulphate,trigger
+ADR-18,chlorine-free,guard
+ADR-18,dechlorinator,guard
+ADR-18,pool float,guard
+ADR-18,pool cover,guard
+ADR-18,bleach-free,guard
+ADR-19,hydrogen peroxide,trigger
+ADR-19,peroxide developer,trigger
+ADR-19,cream developer 30 vol/40 vol,trigger
+ADR-19,h2o2,trigger
+ADR-19,peracetic acid,trigger
+ADR-19,peroxide-free,guard
+ADR-19,3% peroxide,guard
+ADR-20,body filler hardener,trigger
+ADR-20,filler hardener,trigger
+ADR-20,mekp,trigger
+ADR-20,catalyst (resin),trigger
+ADR-20,benzoyl peroxide paste,trigger
+ADR-20,fibreglass hardener,trigger
+ADR-20,organic peroxide,trigger
+ADR-20,hardener (epoxy amine),guard
+ADR-21,pesticide,trigger
+ADR-21,insecticide,trigger
+ADR-21,rat poison,trigger
+ADR-21,rodenticide,trigger
+ADR-21,mouse bait,trigger
+ADR-21,weedkiller (concentrate),trigger
+ADR-21,fungicide,trigger
+ADR-21,wood preservative (solvent),trigger
+ADR-21,paint stripper (dcm),trigger
+ADR-21,methanol,trigger
+ADR-21,nicotine,trigger
+ADR-21,nicotine shot,trigger
+ADR-21,e-liquid concentrate,trigger
+ADR-21,arsenic,trigger
+ADR-21,cyanide,trigger
+ADR-21,strychnine,trigger
+ADR-21,pest-free,guard
+ADR-21,pesticide-free,guard
+ADR-21,non-toxic,guard
+ADR-21,toxic-free,guard
+ADR-21,ant bait station (empty),guard
+ADR-22,biological sample,trigger
+ADR-22,specimen,trigger
+ADR-22,clinical waste,trigger
+ADR-22,sharps bin (used),trigger
+ADR-22,blood sample,trigger
+ADR-22,diagnostic specimen,trigger
+ADR-22,culture,trigger
+ADR-22,sample (fabric/product),guard
+ADR-22,free sample,guard
+ADR-22,covid test (unused),guard
+ADR-23,smoke detector (ionisation),trigger
+ADR-23,smoke alarm (ionisation),trigger
+ADR-23,americium,trigger
+ADR-23,tritium,trigger
+ADR-23,tritium keyring,trigger
+ADR-23,gas mantle (thorium),trigger
+ADR-23,uranium glass,trigger
+ADR-23,radium dial,trigger
+ADR-23,radioactive,trigger
+ADR-23,smoke alarm (optical/photoelectric),guard
+ADR-23,heat alarm,guard
+ADR-23,co alarm,guard
+ADR-24,car battery,trigger
+ADR-24,leisure battery,trigger
+ADR-24,lead acid battery,trigger
+ADR-24,wet battery,trigger
+ADR-24,agm battery,trigger
+ADR-24,gel battery,trigger
+ADR-24,sla battery,trigger
+ADR-24,ups battery,trigger
+ADR-24,solar battery (lead-acid),trigger
+ADR-24,motorbike battery,trigger
+ADR-24,battery acid,trigger
+ADR-24,battery-free,guard
+ADR-24,battery charger,guard
+ADR-24,battery box (empty),guard
+ADR-24,battery tester,guard
+ADR-24,battery included: lithium,guard
+ADR-25,drain cleaner,trigger
+ADR-25,drain unblocker,trigger
+ADR-25,caustic soda,trigger
+ADR-25,lye,trigger
+ADR-25,sodium hydroxide,trigger
+ADR-25,oven cleaner,trigger
+ADR-25,brick cleaner,trigger
+ADR-25,patio cleaner (acid),trigger
+ADR-25,hydrochloric acid,trigger
+ADR-25,muriatic acid,trigger
+ADR-25,sulphuric acid,trigger
+ADR-25,phosphoric acid,trigger
+ADR-25,rust remover,trigger
+ADR-25,descaler,trigger
+ADR-25,limescale remover (strong),trigger
+ADR-25,toilet cleaner (acid),trigger
+ADR-25,alloy wheel cleaner,trigger
+ADR-25,hydrofluoric acid,trigger
+ADR-25,formic acid (varroa),trigger
+ADR-25,glacial acetic acid,trigger
+ADR-25,ammonia solution,trigger
+ADR-25,bleach (concentrate),trigger
+ADR-25,sodium hypochlorite,trigger
+ADR-25,acid-free,guard
+ADR-25,ph neutral,guard
+ADR-25,vinegar,guard
+ADR-25,salicylic acid serum,guard
+ADR-25,hyaluronic acid,guard
+ADR-25,acid wash jeans,guard
+ADR-25,amino acid,guard
+ADR-25,folic acid,guard
+ADR-26,mercury,trigger
+ADR-26,mercury thermometer,trigger
+ADR-26,barometer,trigger
+ADR-26,sphygmomanometer (mercury),trigger
+ADR-26,mercury-free,guard
+ADR-26,freddie mercury,guard
+ADR-26,mercury (brand/planet),guard
+ADR-27,sodium-ion battery,trigger
+ADR-27,na-ion,trigger
+ADR-28,e-bike,trigger
+ADR-28,ebike,trigger
+ADR-28,electric bike,trigger
+ADR-28,pedelec,trigger
+ADR-28,e-scooter,trigger
+ADR-28,electric scooter,trigger
+ADR-28,hoverboard,trigger
+ADR-28,self-balancing,trigger
+ADR-28,electric wheelchair,trigger
+ADR-28,mobility scooter,trigger
+ADR-28,electric ride-on,trigger
+ADR-28,ride-on mower (battery),trigger
+ADR-28,e-bike lock,guard
+ADR-28,e-bike helmet,guard
+ADR-28,scooter (kick),guard
+ADR-29,lawnmower,trigger
+ADR-29,chainsaw,trigger
+ADR-29,strimmer,trigger
+ADR-29,leaf blower (petrol),trigger
+ADR-29,generator,trigger
+ADR-29,outboard motor,trigger
+ADR-29,pressure washer (petrol),trigger
+ADR-29,rotavator,trigger
+ADR-29,engine,trigger
+ADR-29,motorbike,trigger
+ADR-29,quad bike,trigger
+ADR-29,petrol engine,trigger
+ADR-29,electric lawnmower,guard
+ADR-29,engine oil,guard
+ADR-29,search engine,guard
+ADR-29,"engine (toy/model, no fuel)",guard
+ADR-30,dry ice,trigger
+ADR-30,cardice,trigger
+ADR-30,co2 ice,trigger
+ADR-30,ice pack,guard
+ADR-30,gel pack,guard
+ADR-31,life jacket (auto-inflate),trigger
+ADR-31,lifejacket co2,trigger
+ADR-31,self-inflating life raft,trigger
+ADR-31,avalanche airbag,trigger
+ADR-32,first aid kit (with chemicals),trigger
+ADR-32,chemistry set,trigger
+ADR-32,chemical kit,trigger
+ADR-32,science kit,trigger
+ADR-33,environmentally hazardous,trigger
+ADR-33,marine pollutant,trigger
+ADR-33,aquatic toxic,trigger
+ADR-33,copper fungicide,trigger
+ADR-33,anti-fouling,trigger
+ADR-33,weedkiller,trigger
+ADR-34,asbestos,trigger
+ADR-34,expandable polystyrene beads (raw),trigger
+ADR-34,castor beans,trigger
+ADR-34,home battery storage (container),trigger
+ADR-34,polystyrene beanbag filler (expanded),guard
+ADR-35,nimh,trigger
+ADR-35,ni-mh,trigger
+ADR-35,nickel metal hydride,trigger
+ADR-35,nicd,trigger
+ADR-36,magnet,trigger
+ADR-36,neodymium magnet,trigger
+ADR-36,magnetised material,trigger

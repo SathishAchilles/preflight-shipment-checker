@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Preflight — Paper Manifest</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  color-scheme:light;
+  --paper:#F3EFE7; --paper-2:#EAE4D8; --card:#FBF9F4; --ink:#1C1B19; --ink-2:#3B3934; --mute:#7A7468; --rule:#D6CFC0;
+  --stamp:#E5531A; --red:#C8102E; --amber:#B9780A; --pass:#2F7D4F;
+  --ease:cubic-bezier(.2,.7,.2,1);
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  --serif:"Instrument Serif",Georgia,serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--paper);color:var(--ink);font:400 16px/1.55 "IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden;
+  background-image:radial-gradient(rgba(28,27,25,.05) 1px,transparent 1px);background-size:4px 4px}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+.wrap{max-width:1180px;margin:0 auto;padding:0 32px}
+.mono{font-family:var(--mono);font-size:12px;letter-spacing:.06em;text-transform:uppercase}
+.num{font-variant-numeric:tabular-nums}
+.sec-no{font-family:var(--mono);font-size:12px;letter-spacing:.1em;color:var(--stamp)}
+
+/* nav */
+nav{border-bottom:1.5px solid var(--ink);background:var(--paper)}
+nav .wrap{display:flex;align-items:center;justify-content:space-between;height:64px;gap:20px}
+.logo{display:flex;align-items:baseline;gap:12px}
+.logo b{font-family:var(--serif);font-weight:400;font-size:30px;letter-spacing:-.01em}
+.logo span{font-family:var(--mono);font-size:11px;color:var(--mute);letter-spacing:.1em}
+.links{display:flex;gap:28px}
+.links a{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2);position:relative}
+.links a::after{content:"";position:absolute;left:0;right:0;bottom:-4px;height:1.5px;background:var(--stamp);transform:scaleX(0);transform-origin:left;transition:transform .3s var(--ease)}
+.links a:hover::after{transform:scaleX(1)}
+.btn{display:inline-flex;align-items:center;gap:10px;padding:12px 18px;font-family:var(--mono);font-size:12.5px;letter-spacing:.06em;text-transform:uppercase;border:1.5px solid var(--ink);background:var(--ink);color:var(--paper);transition:transform .2s var(--ease),box-shadow .2s var(--ease)}
+.btn:hover{transform:translate(-2px,-2px);box-shadow:3px 3px 0 var(--stamp)}
+.btn.line{background:transparent;color:var(--ink)}
+
+/* hero */
+.hero{padding:72px 0 88px;border-bottom:1.5px solid var(--ink);overflow-x:clip}
+.hero .wrap{display:grid;grid-template-columns:1fr 1.05fr;gap:64px;align-items:center}
+h1{font-family:var(--serif);font-weight:400;font-size:clamp(52px,7.4vw,104px);line-height:.92;letter-spacing:-.02em}
+h1 i{color:var(--stamp)}
+.lede{margin:26px 0 34px;font-size:18px;color:var(--ink-2);max-width:34ch}
+.hero-cta{display:flex;gap:12px;flex-wrap:wrap}
+
+/* manifest form */
+.form{background:var(--card);border:1.5px solid var(--ink);position:relative;box-shadow:8px 8px 0 var(--paper-2),8px 8px 0 1.5px var(--ink);transform:rotate(.6deg)}
+.f-head{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1.5px solid var(--ink)}
+.f-head b{font-family:var(--serif);font-weight:400;font-size:22px}
+.f-grid{display:grid;grid-template-columns:1fr 1fr}
+.cell{padding:10px 16px;border-bottom:1px solid var(--rule);min-height:58px}
+.cell:nth-child(odd){border-right:1px solid var(--rule)}
+.cell label{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:var(--mute);text-transform:uppercase}
+.cell .val{font-family:var(--mono);font-size:14px;min-height:20px}
+.items td.err,.cell .val.err{text-decoration:underline wavy var(--red);text-underline-offset:4px}
+.items{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12.5px}
+.items th{font-weight:500;font-size:10px;letter-spacing:.12em;color:var(--mute);text-align:left;padding:8px 16px;border-bottom:1px solid var(--rule)}
+.items td{padding:8px 16px;border-bottom:1px solid var(--rule)}
+.items td.r,.items th.r{text-align:right}
+.items tr.flag td{background:rgba(200,16,46,.05)}
+.barcode{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;position:relative;overflow:hidden}
+.bars{height:34px;width:60%;background:repeating-linear-gradient(90deg,var(--ink) 0 2px,transparent 2px 4px,var(--ink) 4px 5px,transparent 5px 8px,var(--ink) 8px 11px,transparent 11px 12px)}
+.scan{position:absolute;top:0;bottom:0;width:60px;left:-60px;background:linear-gradient(90deg,transparent,rgba(229,83,26,.35),transparent);animation:scan 3.2s var(--ease) infinite}
+@keyframes scan{to{left:100%}}
+.stamps{position:absolute;inset:0;pointer-events:none}
+.stamp{position:absolute;font-family:var(--mono);font-weight:600;font-size:13px;letter-spacing:.1em;padding:6px 10px;border:2.5px solid currentColor;border-radius:4px;opacity:0;transform:scale(1.8) rotate(var(--r));background:rgba(251,249,244,.88)}
+.stamp small{display:block;font-size:9.5px;font-weight:500;letter-spacing:.08em}
+.stamp.on{animation:thud .38s var(--ease) forwards}
+@keyframes thud{0%{opacity:0;transform:scale(1.8) rotate(var(--r))}70%{opacity:.92;transform:scale(.96) rotate(var(--r))}100%{opacity:.88;transform:scale(1) rotate(var(--r))}}
+.stamp.red{color:var(--red)} .stamp.amber{color:var(--amber)}
+.verdict{position:absolute;right:-18px;bottom:-26px;width:118px;height:118px;border-radius:50%;border:3px double var(--stamp);color:var(--stamp);display:grid;place-items:center;text-align:center;font-family:var(--mono);font-weight:600;font-size:11px;letter-spacing:.12em;line-height:1.3;background:var(--card);opacity:0;transform:scale(1.6) rotate(-14deg)}
+.verdict b{display:block;font-family:var(--serif);font-weight:400;font-size:34px;letter-spacing:0}
+.verdict.on{animation:thud2 .45s var(--ease) forwards}
+@keyframes thud2{to{opacity:1;transform:scale(1) rotate(-14deg)}}
+.replay{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--stamp);text-transform:uppercase}
+
+/* ticker */
+.ticker{border-bottom:1.5px solid var(--ink);overflow:hidden;background:var(--ink);color:var(--paper)}
+.ticker .track{display:flex;white-space:nowrap;animation:slide 32s linear infinite;padding:14px 0}
+.ticker span{font-family:var(--mono);font-size:12px;letter-spacing:.14em;padding:0 26px}
+.ticker span b{color:var(--stamp);font-weight:500;margin-right:10px}
+@keyframes slide{to{transform:translateX(-50%)}}
+
+/* sections */
+section{padding:104px 0;border-bottom:1.5px solid var(--ink)}
+.sec-head{display:grid;grid-template-columns:200px 1fr 1fr;gap:32px;align-items:end;margin-bottom:56px}
+h2{font-family:var(--serif);font-weight:400;font-size:clamp(38px,4.8vw,64px);line-height:.98;letter-spacing:-.01em}
+h2 i{color:var(--stamp)}
+.sec-head p{color:var(--ink-2);max-width:40ch}
+
+.ledger{display:grid;grid-template-columns:repeat(4,1fr);border:1.5px solid var(--ink);background:var(--card)}
+.ledger div{padding:26px 22px;border-right:1px solid var(--rule)}
+.ledger div:last-child{border-right:0}
+.ledger b{display:block;font-family:var(--serif);font-weight:400;font-size:clamp(48px,6vw,80px);line-height:1}
+.ledger span{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--mute);text-transform:uppercase}
+
+.steps{display:grid;grid-template-columns:repeat(3,1fr);border-top:1.5px solid var(--ink)}
+.step{padding:28px 28px 8px 0;border-right:1px solid var(--rule)}
+.step+.step{padding-left:28px}
+.step:last-child{border-right:0}
+.step h3{font-family:var(--serif);font-weight:400;font-size:34px;margin:18px 0 10px}
+.step p{color:var(--ink-2);font-size:15px}
+.step .draw{height:2px;background:var(--stamp);width:0;margin-top:22px;transition:width 1.1s var(--ease)}
+.steps.in .step .draw{width:48px}
+.steps.in .step:nth-child(2) .draw{transition-delay:.25s}
+.steps.in .step:nth-child(3) .draw{transition-delay:.5s}
+
+/* tickets */
+.tally{display:flex;gap:28px;margin-bottom:24px}
+.tickets{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+.ticket{background:var(--card);border:1.5px solid var(--ink);display:grid;grid-template-columns:96px 1fr;position:relative;transition:transform .3s var(--ease)}
+.ticket:hover{transform:translateY(-3px)}
+.ticket .stub{border-right:1.5px dashed var(--ink);display:flex;flex-direction:column;justify-content:space-between;align-items:center;padding:16px 8px;position:relative}
+.ticket .stub::before,.ticket .stub::after{content:"";position:absolute;right:-10px;width:18px;height:18px;border-radius:50%;background:var(--paper);border:1.5px solid var(--ink)}
+.ticket .stub::before{top:-10px} .ticket .stub::after{bottom:-10px}
+.ticket .rid{font-family:var(--mono);font-weight:600;font-size:15px}
+.ticket .sev{font-family:var(--mono);font-size:10px;letter-spacing:.14em;padding:4px 6px;border:1.5px solid currentColor;color:var(--red);transform:rotate(-8deg)}
+.ticket.am .sev{color:var(--amber)}
+.ticket .body{padding:18px 20px;display:flex;flex-direction:column;gap:8px}
+.ticket h4{font-family:var(--serif);font-weight:400;font-size:26px;line-height:1.05}
+.ticket p{font-size:14.5px;color:var(--ink-2)}
+.ticket .fix{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:6px;padding-top:12px;border-top:1px solid var(--rule)}
+.ticket .fix small{font-family:var(--mono);font-size:11.5px;color:var(--mute)}
+.ticket .btn{padding:8px 12px;font-size:11px}
+.ticket .done-stamp{position:absolute;right:20px;top:14px;color:var(--pass);border:2.5px solid currentColor;font-family:var(--mono);font-weight:600;font-size:12px;letter-spacing:.14em;padding:4px 10px;opacity:0;transform:scale(1.8) rotate(8deg);pointer-events:none}
+.ticket.done .done-stamp{animation:thud3 .38s var(--ease) forwards}
+@keyframes thud3{to{opacity:.9;transform:scale(1) rotate(8deg)}}
+.ticket.done .sev{color:var(--pass)}
+.ticket.done .btn{background:transparent;color:var(--pass);border-color:var(--pass);pointer-events:none}
+
+/* rate sheet */
+.tabs{display:flex;border:1.5px solid var(--ink);width:max-content;max-width:100%;margin-bottom:24px;flex-wrap:wrap;background:var(--card)}
+.tabs button{padding:10px 18px;font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;border-right:1px solid var(--ink);transition:background .25s,color .25s}
+.tabs button:last-child{border-right:0}
+.tabs button[aria-pressed=true]{background:var(--ink);color:var(--paper)}
+.sheet{border:1.5px solid var(--ink);background:var(--card)}
+.sheet .row{display:grid;grid-template-columns:56px 1.5fr repeat(3,1fr) 1.3fr;gap:12px;align-items:center;padding:16px 20px;border-bottom:1px solid var(--rule);background:var(--card);position:relative}
+.sheet .row:last-child{border-bottom:0}
+.sheet .hd{font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:var(--mute);text-transform:uppercase;padding:10px 20px;border-bottom:1.5px solid var(--ink)}
+.sheet .rk{font-family:var(--serif);font-size:30px;line-height:1;color:var(--mute)}
+.sheet .row.best .rk{color:var(--stamp)}
+.sheet .row.best::after{content:"RECOMMENDED";position:absolute;right:20px;top:-1px;transform:translateY(-50%);font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;background:var(--stamp);color:var(--card);padding:3px 8px}
+.sheet .nm b{display:block;font-weight:500}
+.sheet .nm span{font-family:var(--mono);font-size:11px;color:var(--mute)}
+.sheet .v{font-family:var(--mono);font-size:15px}
+.sheet .fit{font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;text-align:right}
+.fit.ok{color:var(--pass)} .fit.no{color:var(--red)}
+.why{margin-top:20px;font-family:var(--serif);font-size:24px;line-height:1.25;max-width:60ch;min-height:60px}
+.why b{color:var(--stamp);font-weight:400;font-style:italic}
+
+/* cta */
+.cta{text-align:center}
+.cta h2{font-size:clamp(48px,7vw,96px);margin:14px 0 20px}
+.cta p{color:var(--ink-2);margin-bottom:32px}
+.cta .hero-cta{justify-content:center}
+footer{padding:28px 0 48px}
+footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;color:var(--mute)}
+
+.rv.in{animation:rise .7s var(--ease) both}
+@keyframes rise{from{opacity:.35;transform:translateY(14px)}}
+
+@media (max-width:900px){
+  .hero .wrap{grid-template-columns:1fr;gap:56px}
+  .form{transform:none}
+  .links{display:none}
+  .sec-head{grid-template-columns:1fr;gap:14px}
+  .ledger{grid-template-columns:1fr 1fr}
+  .ledger div:nth-child(2){border-right:0}
+  .ledger div:nth-child(-n+2){border-bottom:1px solid var(--rule)}
+  .steps,.tickets{grid-template-columns:1fr}
+  .step,.step+.step{padding:24px 0;border-right:0;border-bottom:1px solid var(--rule)}
+  .sheet .hd{display:none}
+  .sheet .row{grid-template-columns:44px 1fr 1fr;row-gap:8px}
+  .sheet .fit{grid-column:2/-1;text-align:left}
+}
+@media (max-width:560px){
+  .wrap{padding:0 16px}
+  nav .btn span{display:none}
+  .logo span{display:none}
+  .f-grid{grid-template-columns:1fr}
+  .cell:nth-child(odd){border-right:0}
+  .verdict{right:6px;bottom:-34px;width:96px;height:96px}
+  .verdict b{font-size:26px}
+  .ticket{grid-template-columns:72px 1fr}
+  .items th:nth-child(3),.items td:nth-child(3){display:none}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+  .rv{opacity:1;transform:none}
+  .stamp.on,.verdict.on,.ticket.done .done-stamp{opacity:.9;transform:rotate(var(--r,0deg))}
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a href="#" class="logo"><b>Preflight</b><span>MANIFEST CHECK · EST. 2026</span></a>
+    <div class="links"><a href="#how">Process</a><a href="#issues">Findings</a><a href="#carriers">Rate sheet</a><a href="#rules">Rulebook</a></div>
+    <a href="#cta" class="btn"><span>Check a booking</span> →</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div>
+      <div class="sec-no rv">§ 00 — UK → DE · FR · NL PALLET FREIGHT</div>
+      <h1 class="rv" style="margin-top:18px">Every line,<br><i>checked</i> before<br>it ships.</h1>
+      <p class="lede rv">Preflight reads your booking the way a customs officer would: HS codes, values, cartons, pallet weights and dangerous goods. It stamps what's wrong and tells you how to fix it.</p>
+      <div class="hero-cta rv"><a href="#cta" class="btn">Book by chat →</a><a href="#issues" class="btn line">Upload Bookings sheet ↑</a></div>
+    </div>
+
+    <div class="form rv" aria-label="Animated manifest check">
+      <div class="f-head"><b>Shipment Manifest</b><span class="mono" style="color:var(--mute)">No. PF-0042</span></div>
+      <div class="f-grid">
+        <div class="cell"><label>Consignor</label><div class="val" data-type="Manchester, UK"></div></div>
+        <div class="cell"><label>Consignee</label><div class="val" data-type="Berlin DC (warehouse)"></div></div>
+        <div class="cell"><label>Pallets · Gross</label><div class="val" data-type="2 · 960 kg" data-err></div></div>
+        <div class="cell"><label>Ready · Priority</label><div class="val" data-type="30-10-2026 · Fastest"></div></div>
+      </div>
+      <table class="items">
+        <thead><tr><th>Item</th><th>HS</th><th>Origin</th><th class="r">Qty</th></tr></thead>
+        <tbody>
+          <tr class="it"><td>Ceramic mug 350ml</td><td data-hs>69120</td><td>GB</td><td class="r num">1,200</td></tr>
+          <tr class="it"><td>Power bank 10,000mAh</td><td>850760</td><td>CN</td><td class="r num">240</td></tr>
+        </tbody>
+      </table>
+      <div class="barcode"><div class="bars"></div><span class="mono" style="color:var(--mute)">10 RULES</span><div class="scan"></div></div>
+      <div class="stamps">
+        <div class="stamp red" style="--r:-9deg;left:50%;top:78%">R-01<small>HS SHORT</small></div>
+        <div class="stamp red" style="--r:6deg;left:30%;top:27%">R-05<small>480 KG &gt; 400</small></div>
+        <div class="stamp red" style="--r:-4deg;left:26%;top:80%">R-06<small>LITHIUM</small></div>
+        <div class="stamp amber" style="--r:10deg;left:46%;top:1.5%">R-08<small>NO SLOT</small></div>
+      </div>
+      <div class="verdict"><div><b>4</b>ISSUES<br>FOUND</div></div>
+    </div>
+  </div>
+  <div class="wrap" style="margin-top:44px;text-align:right"><button class="replay" id="replay">↻ Re-run inspection</button></div>
+</header>
+
+<div class="ticker" aria-hidden="true"><div class="track" id="ticker"></div></div>
+
+<section id="rules">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="sec-no">§ 01 — RULEBOOK</span>
+      <h2>A fixed book of <i>ten</i> rules.</h2>
+      <p>Severities come only from the rulebook. Anything else Preflight notices, like a blank cell or an impossible date, is filed separately as Data or Advisory.</p>
+    </div>
+    <div class="ledger rv">
+      <div><b class="num" data-count="10">0</b><span>Rules · R-01 to R-10</span></div>
+      <div><b class="num" data-count="6">0</b><span>Red · stops shipment</span></div>
+      <div><b class="num" data-count="4">0</b><span>Amber · needs a look</span></div>
+      <div><b class="num" data-count="111">0</b><span>Tests passing</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="sec-no">§ 02 — PROCESS</span>
+      <h2>Three steps to <i>cleared</i>.</h2>
+      <p>No login, no server. It runs entirely in your browser.</p>
+    </div>
+    <div class="steps" id="steps">
+      <div class="step rv"><span class="mono" style="color:var(--mute)">Step I</span><h3>Describe it</h3><p>Type the shipment in plain words. Preflight fills in the form and asks only for what's missing. Dates are read day-first.</p><div class="draw"></div></div>
+      <div class="step rv"><span class="mono" style="color:var(--mute)">Step II</span><h3>Inspect it</h3><p>All ten rules run against the carrier your priority selects, along with data-quality checks on every cell.</p><div class="draw"></div></div>
+      <div class="step rv"><span class="mono" style="color:var(--mute)">Step III</span><h3>Correct it</h3><p>Fix with one click. Every change re-runs the checks and records what changed, e.g. "R-05 now passes".</p><div class="draw"></div></div>
+    </div>
+  </div>
+</section>
+
+<section id="issues">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="sec-no">§ 03 — FINDINGS</span>
+      <h2>Stamped, <i>explained</i>, fixable.</h2>
+      <p>Each finding says what's wrong, how serious it is and how to fix it. Try a fix below.</p>
+    </div>
+    <div class="tally mono rv"><span>Red <b id="t-red">3</b></span><span>Amber <b id="t-amb">1</b></span><span style="color:var(--pass)">Cleared <b id="t-fix">0</b></span></div>
+    <div class="tickets">
+      <article class="ticket rv" data-sev="red"><div class="stub"><span class="rid">R-01</span><span class="sev">RED</span></div>
+        <div class="body"><h4>HS code is five digits</h4><p>"69120" for Ceramic mug 350ml. Excel probably dropped the leading zero.</p>
+        <div class="fix"><small>From item name → 691200</small><button class="btn">Use 691200</button></div></div><span class="done-stamp">CLEARED</span></article>
+      <article class="ticket rv" data-sev="red"><div class="stub"><span class="rid">R-05</span><span class="sev">RED</span></div>
+        <div class="body"><h4>Pallet over carrier limit</h4><p>480 kg per pallet, but Carrier C, the fastest, takes 400 kg at most.</p>
+        <div class="fix"><small>Re-pack to 3 pallets · £1,020</small><button class="btn">Re-pack</button></div></div><span class="done-stamp">CLEARED</span></article>
+      <article class="ticket rv" data-sev="red"><div class="stub"><span class="rid">R-06</span><span class="sev">RED</span></div>
+        <div class="body"><h4>Lithium battery on board</h4><p>"Power bank 10,000mAh" counts as dangerous goods. These road services don't carry ADR.</p>
+        <div class="fix"><small>Remove · totals recalculate</small><button class="btn">Remove item</button></div></div><span class="done-stamp">CLEARED</span></article>
+      <article class="ticket am rv" data-sev="amber"><div class="stub"><span class="rid">R-08</span><span class="sev">AMBER</span></div>
+        <div class="body"><h4>No warehouse appointment</h4><p>Berlin DC is a warehouse, so it needs a booked delivery slot.</p>
+        <div class="fix"><small>ETA Wed 4 Nov · 08:00–12:00</small><button class="btn">Book slot</button></div></div><span class="done-stamp">CLEARED</span></article>
+    </div>
+  </div>
+</section>
+
+<section id="carriers">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="sec-no">§ 04 — RATE SHEET</span>
+      <h2>Carrier, by your <i>priority</i>.</h2>
+      <p>2 pallets · 960 kg · Manchester → Berlin. R-05 is judged against the carrier at the top.</p>
+    </div>
+    <div class="tabs rv" id="seg">
+      <button data-p="cheapest" aria-pressed="false">Cheapest</button>
+      <button data-p="fastest" aria-pressed="true">Fastest</button>
+      <button data-p="reliable" aria-pressed="false">Most reliable</button>
+      <button data-p="balanced" aria-pressed="false">Balanced</button>
+    </div>
+    <div class="sheet rv">
+      <div class="row hd"><span>#</span><span>Carrier</span><span>Cost</span><span>Transit</span><span>On-time</span><span style="text-align:right">Pallet fit</span></div>
+      <div id="carrierlist"></div>
+    </div>
+    <p class="why rv" id="why"></p>
+  </div>
+</section>
+
+<section id="cta" class="cta">
+  <div class="wrap rv">
+    <span class="sec-no">§ 05 — DISPATCH</span>
+    <h2>File it <i>right</i>, first time.</h2>
+    <p>One HTML file. No account. Your shipment data stays on your machine.</p>
+    <div class="hero-cta"><a href="#" class="btn">Open Preflight →</a><a href="#" class="btn line">Sample workbook ↓</a></div>
+  </div>
+</section>
+
+<footer><div class="wrap mono"><span>Preflight · Ops Hackathon Case 2</span><span>Form PF-1 · Rev. 2026</span></div></footer>
+
+<script>
+(() => {
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---------- hero: type fields, then stamp ---------- */
+  const vals = [...document.querySelectorAll('.form .val')];
+  const stamps = [...document.querySelectorAll('.stamp')];
+  const verdict = document.querySelector('.verdict');
+  const rows = [...document.querySelectorAll('.items tr.it')];
+  let timers = [];
+  const later = (fn, ms) => timers.push(setTimeout(fn, ms));
+  function run() {
+    timers.forEach(clearTimeout); timers = [];
+    stamps.forEach(s => s.classList.remove('on')); verdict.classList.remove('on');
+    rows.forEach(r => { r.style.opacity = 0; r.classList.remove('flag'); });
+    vals.forEach(v => { v.textContent = ''; v.classList.remove('err'); }); document.querySelector('[data-hs]').classList.remove('err');
+    if (reduce) { vals.forEach(v => v.textContent = v.dataset.type); rows.forEach(r => r.style.opacity = 1); stamps.forEach(s => s.classList.add('on')); verdict.classList.add('on'); return; }
+    let t = 200;
+    vals.forEach(v => { [...v.dataset.type].forEach((ch, i) => later(() => v.textContent += ch, t + i * 28)); t += v.dataset.type.length * 28 + 120; });
+    rows.forEach((r, i) => later(() => { r.style.transition = 'opacity .4s'; r.style.opacity = 1; }, t + i * 180));
+    t += 700;
+    stamps.forEach((s, i) => later(() => {
+      s.classList.add('on');
+      if (i === 0) { rows[0].classList.add('flag'); document.querySelector('[data-hs]').classList.add('err'); }
+      if (i === 1) vals[2].classList.add('err');
+      if (i === 2) rows[1].classList.add('flag');
+    }, t + i * 420));
+    later(() => verdict.classList.add('on'), t + stamps.length * 420 + 200);
+  }
+  document.getElementById('replay').addEventListener('click', run);
+
+  /* ---------- ticker ---------- */
+  const R = [['R-01','HS CODE ≥ 6 DIGITS'],['R-02','VALUE WITHIN 1%'],['R-03','UNITS × CARTONS'],['R-04','CARTON TOTALS'],['R-05','PALLET WEIGHT'],['R-06','DANGEROUS GOODS'],['R-07','GROSS ≥ NET'],['R-08','APPOINTMENT'],['R-09','ORIGIN'],['R-10','READY DATE']];
+  document.getElementById('ticker').innerHTML = [...R, ...R].map(([a, b]) => `<span><b>${a}</b>${b}</span>`).join('');
+
+  /* ---------- reveal + counters ---------- */
+  const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { threshold: .15 });
+  document.querySelectorAll('.rv, #steps').forEach(el => io.observe(el));
+  const cio = new IntersectionObserver(es => es.forEach(e => {
+    if (!e.isIntersecting) return; cio.unobserve(e.target);
+    const el = e.target, to = +el.dataset.count;
+    if (reduce) { el.textContent = to; return; }
+    const t0 = performance.now();
+    const tick = t => { const k = Math.min(1, (t - t0) / 1100); el.textContent = Math.round(to * (1 - Math.pow(1 - k, 3))); if (k < 1) requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+  }), { threshold: .6 });
+  document.querySelectorAll('[data-count]').forEach(el => cio.observe(el));
+
+  /* ---------- fixes ---------- */
+  const tR = document.getElementById('t-red'), tA = document.getElementById('t-amb'), tF = document.getElementById('t-fix');
+  document.querySelectorAll('.ticket .btn').forEach(b => b.addEventListener('click', () => {
+    const t = b.closest('.ticket'); t.classList.add('done'); t.querySelector('.sev').textContent = 'OK'; b.textContent = '✓ Applied';
+    if (t.dataset.sev === 'red') tR.textContent = +tR.textContent - 1; else tA.textContent = +tA.textContent - 1;
+    tF.textContent = +tF.textContent + 1;
+  }));
+
+  /* ---------- rate sheet ---------- */
+  const P = 2, WPP = 480;
+  const C = [
+    { k:'A', name:'Carrier A', svc:'Road economy',  price:180, days:5, on:92, max:500 },
+    { k:'B', name:'Carrier B', svc:'Road standard', price:220, days:3, on:95, max:750 },
+    { k:'C', name:'Carrier C', svc:'Road express',  price:340, days:2, on:98, max:400 },
+  ];
+  const ORDER = {
+    cheapest: [...C].sort((a,b) => a.price - b.price),
+    fastest:  [...C].sort((a,b) => a.days - b.days),
+    reliable: [...C].sort((a,b) => b.on - a.on),
+    balanced: ['B','A','C'].map(k => C.find(c => c.k === k)),
+  };
+  const WHY = {
+    cheapest: '<b>Carrier A</b> is cheapest at £360, and 480 kg per pallet sits within its 500 kg limit.',
+    fastest:  '<b>Carrier C</b> takes 2 days but is 80 kg over its pallet limit. Re-pack onto three pallets, or take Carrier B instead.',
+    reliable: '<b>Carrier C</b> is on time 98% of the time but fails R-05 as booked. Carrier B is next at 95% and fits.',
+    balanced: '<b>Carrier B</b> is the steady middle: £440, 3 days, 95% on time, with plenty of room under the limit.',
+  };
+  const list = document.getElementById('carrierlist');
+  list.innerHTML = C.map(c => `<div class="row" data-k="${c.k}">
+    <span class="rk">1</span>
+    <div class="nm"><b>${c.name}</b><span>${c.svc} · max ${c.max} kg</span></div>
+    <span class="v num">£${c.price * P}</span><span class="v num">${c.days} d</span><span class="v num">${c.on}%</span>
+    <span class="fit ${WPP <= c.max ? 'ok' : 'no'}">${WPP <= c.max ? '✓ FITS' : '✕ OVER ' + (WPP - c.max) + ' KG'}</span></div>`).join('');
+  const why = document.getElementById('why');
+  function rank(p, animate = true) {
+    const items = [...list.children];
+    const first = new Map(items.map(el => [el, el.getBoundingClientRect().top]));
+    ORDER[p].forEach((c, i) => { const el = list.querySelector(`[data-k="${c.k}"]`); el.querySelector('.rk').textContent = i + 1; el.classList.toggle('best', i === 0); list.appendChild(el); });
+    if (animate && !reduce) items.forEach(el => { const d = first.get(el) - el.getBoundingClientRect().top; if (d) el.animate([{ transform: `translateY(${d}px)` }, { transform: 'none' }], { duration: 450, easing: 'cubic-bezier(.2,.7,.2,1)' }); });
+    why.innerHTML = WHY[p];
+  }
+  const seg = document.getElementById('seg');
+  seg.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+    seg.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); rank(b.dataset.p);
+  }));
+  rank('fastest', false);
+  run();
+})();
+</script>
+</body>
+</html>
