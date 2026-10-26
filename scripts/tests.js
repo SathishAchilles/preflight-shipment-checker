@@ -1,4 +1,4 @@
-/* Preflight test suite — shared by Node and the in-app "Test cases" tab. */
+/* CargoPass test suite — shared by Node and the in-app "Test cases" tab. */
 (function (root) {
 'use strict';
 function runTests(PF, CHAT) {
@@ -297,7 +297,7 @@ function runTests(PF, CHAT) {
     T('Conversation', '“make it 1200 mugs” updates the item and re-derives cartons', () => { const { s, ev: e } = talk([FULL, 'make it 1200 mugs']); return expect(s.booking.items.length === 1 && s.booking.items[0].qty === 1200 && s.booking.items[0].cartons === 100 && e.checks.find(c => c.id === 'R-03').status === 'pass'); });
     T('Conversation', 'Stated declared value is checked against items (R-02)', () => { const { ev: e } = talk([FULL, 'declared value is £6,000']); return expect(e.checks.find(c => c.id === 'R-02').status === 'fail'); });
     T('Conversation', 'Lithium item → R-06 Red and confirmation is blocked', () => { const { r, ev: e } = talk([FULL.replace('1080 ceramic mugs', '1080 lithium power banks').replace('HS 691200', 'HS 850760'), 'confirm the booking']); return expect(e.status === 'Red' && r.intent === 'confirm-blocked'); });
-    T('Conversation', 'Clean booking + “confirm” → booking reference issued', () => { const { r } = talk([FULL, 'confirm']); return expect(r.intent === 'confirmed' && /^PF-\d{6}$/.test(r.ref), r.ref); });
+    T('Conversation', 'Clean booking + “confirm” → booking reference issued', () => { const { r } = talk([FULL, 'confirm']); return expect(r.intent === 'confirmed' && /^CP-\d{6}$/.test(r.ref), r.ref); });
     T('Conversation', '“remove the candles” drops that item', () => { const { s } = talk(['500 scented candles at £4 each and 200 reed diffusers at £12 each', 'remove the candles']); return expect(s.booking.items.length === 1 && /diffuser/i.test(s.booking.items[0].description)); });
     T('Conversation', 'Business address → appointment question is skipped', () => { const { s } = talk(['Send 200 cotton t-shirts at £6 each, 20 per carton, 0.2kg each, HS 610910, made in Turkey, from London to a shop in Lyon. 1 pallet, 60kg total, ready tomorrow, cheapest. We are Thread & Co Ltd']); return expect(s.complete && s.booking.appointment == null, s.pending && s.pending.q); });
     T('Conversation', '“no appointment yet” → R-08 Amber', () => { const { ev: e } = talk([FULL.replace('Delivery slot is booked.', 'We have no appointment yet.')]); return expect(e.checks.find(c => c.id === 'R-08').status === 'fail'); });

@@ -1,9 +1,9 @@
 ---
 name: shipment-preflight-checker
-description: Build, extend or run "Preflight" — a conversational cross-border shipment booking tool and pre-flight error checker (UK → Germany/France/Netherlands pallet freight). Use this skill whenever the user mentions shipment booking, commercial invoice checks, HS code validation, declared value vs item totals, carton/pallet reconciliation, pallet weight limits, dangerous goods screening, carrier recommendation by priority (cheapest/fastest/most reliable/balanced), the Ops Hackathon Case 2, or uploading Bookings/Items sheets to find planted mistakes — even if they don't say "Preflight".
+description: Build, extend or run "CargoPass" — a conversational cross-border shipment booking tool and pre-flight error checker (UK → Germany/France/Netherlands pallet freight). Use this skill whenever the user mentions shipment booking, commercial invoice checks, HS code validation, declared value vs item totals, carton/pallet reconciliation, pallet weight limits, dangerous goods screening, carrier recommendation by priority (cheapest/fastest/most reliable/balanced), the Ops Hackathon Case 2, or uploading Bookings/Items sheets to find planted mistakes — even if they don't say "CargoPass".
 ---
 
-# Shipment Preflight Checker
+# Shipment CargoPass Checker
 
 A single self-contained HTML app (no backend, no login) that:
 1. **Books by chat** — parses plain-language shipment descriptions, asks only for missing fields, handles mid-conversation edits ("add a pallet").

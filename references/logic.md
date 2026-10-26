@@ -1,4 +1,4 @@
-# Preflight — decision logic
+# CargoPass — decision logic
 
 ## 1. Architecture
 - **Pure engine** (`engine.js`) → normalise → evaluate → recommend → confirm. Same code runs in Node tests and the browser, so tests prove what judges see.
@@ -63,7 +63,7 @@ Cost = price per pallet × pallets (route by destination country).
 - If chosen fails R-05 → report shows "over limit", recommended fix with button; file table shows `A → B · £660`.
 
 ## 6. Timeline & confirmation
-Collection = ready date (today if past), moved to Monday if weekend; delivery = collection + transit calendar days, moved off weekends. Confirmation: plain sentence of what/where/carrier/cost/ETA + ordered next steps (fix reds → carrier booking → commercial invoice & export declaration → label cartons/pallets → ready at origin → appointment matching ETA → EU import clearance & tracking). Confirm is blocked while Red; Amber confirms with warning; reference `PF-######`.
+Collection = ready date (today if past), moved to Monday if weekend; delivery = collection + transit calendar days, moved off weekends. Confirmation: plain sentence of what/where/carrier/cost/ETA + ordered next steps (fix reds → carrier booking → commercial invoice & export declaration → label cartons/pallets → ready at origin → appointment matching ETA → EU import clearance & tracking). Confirm is blocked while Red; Amber confirms with warning; reference `CP-######`.
 
 ## 7. Conversation engine
 - **Masking pipeline:** each recognised span is blanked so numbers aren't reused: carrier override → dates → declared value → total cartons → pallets (deltas before absolutes) → explicit gross weight → item mentions → per-item details → leftover kg → cities/type/appointment/priority/seller.

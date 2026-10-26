@@ -1,4 +1,4 @@
-/* Preflight engine — pure functions, no DOM. Shared by the web app and the Node test runner. */
+/* CargoPass engine — pure functions, no DOM. Shared by the web app and the Node test runner. */
 (function (root) {
 'use strict';
 

@@ -1,4 +1,4 @@
-/* Preflight UI */
+/* CargoPass UI */
 (function () {
 'use strict';
 const PF = window.PF, C = window.PFChat;
@@ -857,7 +857,7 @@ async function exportResults() {
   const cor = [['Time', 'Booking', 'SKU', 'Field', 'Before', 'After', 'By', 'Action'], ...audit.filter(e => !e.chat).map(e => [e.at, e.booking, e.sku, e.field, e.before, e.after, e.by, e.action])];
   const s3 = XLSX.utils.aoa_to_sheet(cor); s3['!cols'] = [22, 10, 10, 24, 22, 22, 8, 16].map(w => ({ wch: w }));
   XLSX.utils.book_append_sheet(wb, s1, 'Summary'); XLSX.utils.book_append_sheet(wb, s2, 'Issues'); XLSX.utils.book_append_sheet(wb, s3, 'Corrections');
-  await saveFile('preflight-results.xlsx', XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
+  await saveFile('cargopass-results.xlsx', XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
 }
 const drop = $('#drop'); const finput = $('#file-input');
 finput.addEventListener('change', () => { if (finput.files.length) loadFiles([...finput.files]); finput.value = ''; });
@@ -865,11 +865,11 @@ finput.addEventListener('change', () => { if (finput.files.length) loadFiles([..
 ['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
 drop.addEventListener('drop', e => { if (e.dataTransfer.files.length) loadFiles([...e.dataTransfer.files]); });
 function sampleBuf() { const bin = atob(window.SAMPLE_XLSX_B64); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u.buffer; }
-$('#load-sample').addEventListener('click', () => { const wb = XLSX.read(sampleBuf(), { type: 'array' }); ingest(sheetsFromWorkbook(wb, 'Preflight_Test_Cases.xlsx'), 'Sample: Preflight_Test_Cases.xlsx (25 test bookings)'); });
-$('#dl-sample').addEventListener('click', () => saveFile('Preflight_Test_Cases.xlsx', sampleBuf()));
+$('#load-sample').addEventListener('click', () => { const wb = XLSX.read(sampleBuf(), { type: 'array' }); ingest(sheetsFromWorkbook(wb, 'CargoPass_Test_Cases.xlsx'), 'Sample: CargoPass_Test_Cases.xlsx (25 test bookings)'); });
+$('#dl-sample').addEventListener('click', () => saveFile('CargoPass_Test_Cases.xlsx', sampleBuf()));
 function demoBuf() { const bin = atob(window.DEMO_XLSX_B64 || ''); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u.buffer; }
-$('#load-demo').addEventListener('click', () => { const wb = XLSX.read(demoBuf(), { type: 'array' }); ingest(sheetsFromWorkbook(wb, 'Preflight_Demo_Bookings.xlsx'), 'Demo: 12 bookings across every route'); });
-$('#dl-demo').addEventListener('click', () => saveFile('Preflight_Demo_Bookings.xlsx', demoBuf()));
+$('#load-demo').addEventListener('click', () => { const wb = XLSX.read(demoBuf(), { type: 'array' }); ingest(sheetsFromWorkbook(wb, 'CargoPass_Demo_Bookings.xlsx'), 'Demo: 12 bookings across every route'); });
+$('#dl-demo').addEventListener('click', () => saveFile('CargoPass_Demo_Bookings.xlsx', demoBuf()));
 $('#skip-ex').addEventListener('change', () => { if (fileData) ingest(fileData.sheets, fileData.name); });
 
 // ---------- RULES ----------
