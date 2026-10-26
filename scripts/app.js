@@ -824,7 +824,7 @@ function renderFile() {
     h('button', { class: 'btn', type: 'button', onclick: exportResults, disabled: !rows.length }, 'Export results (.xlsx)')));
   fileData.notices.forEach(n => out.append(h('p', { class: 'notice n-' + n.level }, n.text)));
   if (!rows.length) { out.append(h('p', { class: 'note-warn' }, 'No bookings found under the header row.')); return; }
-  // The outcomes panel is kept in the code but not shown in the simplified UI.
+  out.append(outcomesPanel().update(rows));
   const exp = null; // expected-results comparison is not shown in the simplified UI
   { const openR = rows.find(r2 => r2.i === openRow); setHero('file', openR ? openR.ev : null, openR ? openR.ev.b.id : ''); }
   const tbody = h('tbody');
