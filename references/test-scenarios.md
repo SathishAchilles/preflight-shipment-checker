@@ -128,7 +128,7 @@ Base booking: Manchester → Frankfurt warehouse, 3 pallets, 90 cartons, £5,400
 | F11 | "make it 1200 mugs" | Updates existing item; cartons re-derived 100 |
 | F12 | "declared value is £6,000" | Stated value checked → R-02 Red |
 | F13 | Lithium item + "confirm" | Blocked, red issues listed |
-| F14 | Clean + "confirm" | Reference PF-###### and next steps |
+| F14 | Clean + "confirm" | Reference CP-###### and next steps |
 | F15 | "remove the candles" | Item removed |
 | F16 | Shop / business address | Appointment question skipped |
 | F17 | "no appointment yet" | R-08 Amber |
