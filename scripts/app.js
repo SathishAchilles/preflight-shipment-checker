@@ -264,7 +264,7 @@ function carrierCards(ev, ctx) {
   return h('section', { class: 'carriers' }, seg, cards, why, h('p', { class: 'note' }, PRICE_TXT));
 }
 function reportEl(ev, ctx) {
-  const { b, checks, dataIssues, advisories, status, rec, eta } = ev;
+  const { b, checks, dataIssues, advisories, warnings = [], status, rec, eta } = ev;
   const fails = checks.filter(c => c.status === 'fail' || c.status === 'check');
   const issues = [
     ...dataIssues.map(d => ({ kind: 'data', sev: d.sev, title: d.field, detail: d.text, fix: d.fix })),
@@ -306,6 +306,8 @@ function reportEl(ev, ctx) {
   const adv = advisories.length ? h('section', { class: 'advisories' }, h('div', { class: 'sec-h' }, h('h3', null, 'Good to know'), h('span', { class: 'muted' }, 'doesn’t block your booking')), h('div', { class: 'advlist' }, advisories.map(a => h('div', { class: 'advcard' }, h('span', { class: 'adv-tag' }, advKind(dgPlain(a) ? [dgPlain(a), h('details', { class: 'why' }, h('summary', null, 'Why'), h('p', null, a))] : a)), h('div', null, a)))),
     advActs.length ? h('div', { class: 'fix-acts' }, advActs.map(a => h('button', { class: 'btn small', type: 'button', onclick: () => ctx.apply(a) }, a.label))) : null) : null;
 
+  const warnEl = warningsEl(warnings);
+
   const carrierEl = rec ? carrierCards(ev, ctx) : null;
 
   const conf = PF.confirmation(ev, ctx.reviewedCount ? ctx.reviewedCount(ev) : 0);
@@ -332,7 +334,7 @@ function reportEl(ev, ctx) {
   const carrierFold = rec ? fold(carrierEl, `Choose your carrier · ${rec.chosen.carrier} · ${PF.gbp(rec.chosen.cost)} · ${rec.chosen.transit} days${rec.chosen.fits === false ? ' · too heavy' : ''}`) : null;
   const confFold = fold(confEl, status === 'Red' ? 'Ready to book? · after the must-fix items are cleared' : 'Ready to book? · summary and next steps');
   const fixHead = issues.length ? h('div', { class: 'sec-h' }, h('h3', null, 'Things to fix'), h('div', { class: 'tally' }, h('span', null, 'Must fix ', h('b', null, String(nRed))), h('span', null, 'Check ', h('b', null, String(nAmb))))) : null;
-  return h('div', { class: 'report' }, head, reviewEl(ev, ctx), fixHead, issueList, passedEl, adv, carrierFold, confFold, inv, ctx.mode === 'file' ? stamp : null, hist);
+  return h('div', { class: 'report' }, head, reviewEl(ev, ctx), fixHead, issueList, passedEl, warnEl, adv, carrierFold, confFold, inv, ctx.mode === 'file' ? stamp : null, hist);
 }
 
 function planEl(ev, ctx) {
@@ -426,10 +428,23 @@ function send(text) {
   if (chips) b.append(chipsEl(chips, 'live'));
   renderSheet();
 }
+// Road-freight warnings (bans, permits, ADR limits): advisory only, shown with a small ⚠.
+const warnIcon = () => h('span', { class: 'warn-ico', role: 'img', 'aria-label': 'Warning' }, '⚠');
+function warningsEl(warnings) {
+  if (!warnings.length) return null;
+  return h('section', { class: 'warnings' },
+    h('div', { class: 'sec-h' }, h('h3', null, warnIcon(), ' Road-freight warnings'), h('span', { class: 'muted' }, 'doesn’t block your booking — check before you ship')),
+    h('div', { class: 'warnlist' }, warnings.map(w => h('div', { class: 'warncard k-' + w.kind },
+      h('span', { class: 'warn-tag' }, warnIcon(), ' ', w.title),
+      h('p', null, w.text),
+      h('p', { class: 'warn-fix' }, h('b', null, 'What to do: '), w.fix),
+      h('p', { class: 'warn-ref' }, w.ref)))));
+}
 function miniVerdict(ev, priceNote) {
   const n = [ev.reds ? `${ev.reds} must fix` : null, ev.ambers ? `${ev.ambers} to check` : null].filter(Boolean).join(' · ') || 'nothing to fix';
   return h('div', { class: 'mini v-' + ev.status },
     h('p', null, h('span', { class: 'ministamp' }, STAMP[ev.status]), ' ', `All checked — ${n}.`),
+    ev.warnings && ev.warnings.length ? h('p', { class: 'mini-warn' }, warnIcon(), ` ${ev.warnings.length} road-freight warning${ev.warnings.length === 1 ? '' : 's'} — ${[...new Set(ev.warnings.map(w => w.title))].join(' · ')}.`) : null,
     h('p', { class: 'muted' }, 'Your full check is in the booking sheet.'),
     ev.rec && priceNote ? h('p', { class: 'note' }, PRICE_TXT) : null,
     h('button', { class: 'linkbtn only-narrow', type: 'button', onclick: () => $('#sheet').scrollIntoView({ behavior: 'smooth' }) }, 'See your check ↓'));
@@ -714,7 +729,7 @@ function renderFile() {
   const exp = fileData.expected;
   { const openR = rows.find(r2 => r2.i === openRow); setHero('file', openR ? openR.ev : null, openR ? openR.ev.b.id : ''); }
   const tbody = h('tbody');
-  rows.filter(r => filter === 'All' || (filter === 'Review' ? toReview(r) > 0 : filter === 'Advisory' ? r.ev.advisories.length > 0 : r.ev.status === filter)).forEach(r => {
+  rows.filter(r => filter === 'All' || (filter === 'Review' ? toReview(r) > 0 : filter === 'Advisory' ? r.ev.advisories.length + r.ev.warnings.length > 0 : r.ev.status === filter)).forEach(r => {
     const { ev } = r; const b = ev.b;
     const flagged = [...ev.checks.filter(c => c.status === 'fail' || c.status === 'check').map(c => ({ t: PLAIN[c.id] || c.id, s: c.status === 'check' ? 'Amber' : c.sev })), ...(ev.dataIssues.length ? [{ t: `Booking details ×${ev.dataIssues.length}`, s: ev.dataIssues.some(d => d.sev === 'Red') ? 'Red' : 'Amber' }] : [])];
     const e = exp && exp[b.id.toUpperCase()];
@@ -724,7 +739,7 @@ function renderFile() {
       h('td', null, b.seller || '—'),
       h('td', null, `${b.originCity || '?'} → ${b.destCity || '?'}`),
       h('td', null, h('span', { class: 'pill p-' + ev.status }, ({ Red: 'Must fix', Amber: 'Check', Green: 'Ready' })[ev.status])),
-      h('td', null, flagged.length ? flagged.map(f => h('span', { class: 'rchip s-' + f.s }, f.t)) : h('span', { class: 'muted' }, 'none'), ev.advisories.length ? h('span', { class: 'rchip s-Adv', title: 'Doesn’t block the booking' }, 'Good to know') : null),
+      h('td', null, flagged.length ? flagged.map(f => h('span', { class: 'rchip s-' + f.s }, f.t)) : h('span', { class: 'muted' }, 'none'), ev.warnings.length ? h('span', { class: 'rchip s-Warn', title: ev.warnings.map(w => `${w.title}: ${w.sku}`).join('\n') }, warnIcon(), ` ${ev.warnings.length}`) : null, ev.advisories.length ? h('span', { class: 'rchip s-Adv', title: 'Doesn’t block the booking' }, 'Good to know') : null),
       h('td', null, !ev.rec ? '—' : ev.rec.chosen.fits === false && ev.rec.fixes.length ? h('span', null, h('s', { class: 'muted' }, ev.rec.chosen.carrier), ' → ', `${ev.rec.fixes[0].carrier}${ev.rec.fixes[0].type === 'repack' ? ` on ${ev.rec.fixes[0].pallets} plt` : ''} · ${PF.gbp(ev.rec.fixes[0].cost)}`) : `${ev.rec.chosen.carrier} · ${PF.gbp(ev.rec.chosen.cost)}`),
       h('td', { class: 'num' }, toReview(r) || ''),
       exp ? h('td', null, e ? h('span', { class: String(e.status).toLowerCase() === ev.status.toLowerCase() ? 'match' : 'mismatch', title: e.rules || '' }, String(e.status).toLowerCase() === ev.status.toLowerCase() ? `✓ ${e.status}` : `✕ expected ${e.status}`) : '—') : null);
@@ -754,6 +769,7 @@ async function exportResults() {
     sum[sum.length - 1].push(toReview(rows[ri]) || '');
     ev.dataIssues.forEach(d => iss.push([b.id, d.sev, 'Data: ' + d.field, d.text, d.fix || '']));
     flags.forEach(c => iss.push([b.id, c.status === 'check' ? 'Amber' : c.sev, `${c.id} ${c.rule}`, c.detail, c.fix || '']));
+    (ev.warnings || []).forEach(w => iss.push([b.id, 'Warning', w.title, w.text, `${w.fix} (${w.ref})`]));
   });
   const wb = XLSX.utils.book_new();
   const s1 = XLSX.utils.aoa_to_sheet(sum); s1['!cols'] = [10, 22, 24, 12, 8, 9, 10, 22, 26, 10, 10, 12, 12, 10, 10].map(w => ({ wch: w }));

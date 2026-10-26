@@ -206,6 +206,18 @@ details > summary { cursor: pointer; font-weight: 500; padding: 6px 0; }
 .advlist { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 10px; }
 .advcard { border-radius: 14px; padding: 12px 14px; border-color: rgba(182,156,255,.3); background: var(--adv-tint); font-size: 14.5px; }
 .adv-tag { display: inline-block; font: 500 10.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--adv); border: 1px solid rgba(182,156,255,.45); border-radius: 999px; padding: 2px 9px; margin-bottom: 6px; }
+.warnings { margin-top: 14px; }
+.warn-ico { color: var(--amber); font-size: .95em; line-height: 1; }
+.warnlist { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 10px; }
+.warncard { border-radius: 14px; padding: 12px 14px; border: 1px solid rgba(255,181,71,.3); background: var(--amber-tint); font-size: 14.5px; }
+.warncard.k-ban { border-color: rgba(255,92,122,.4); background: var(--red-tint); }
+.warncard.k-ban .warn-tag, .warncard.k-ban .warn-ico { color: var(--red); border-color: rgba(255,92,122,.45); }
+.warncard p { margin: 4px 0 0; }
+.warn-tag { display: inline-flex; gap: 4px; align-items: center; font: 500 10.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--amber); border: 1px solid rgba(255,181,71,.45); border-radius: 999px; padding: 2px 9px; }
+.warn-fix { color: var(--ink); }
+.warn-ref { font: 11px var(--mono); color: var(--dim); }
+.mini-warn { color: var(--amber); }
+.rchip.s-Warn { color: var(--amber); }
 .carriers, .confirm { margin-top: 22px; }
 .carriers h3, .confirm h3 { font-size: 17px; margin-bottom: 8px; }
 .confirm { padding: 16px 18px; border-radius: 16px; border: 1px solid var(--line); background: var(--glass); }
@@ -543,7 +555,7 @@ footer { max-width: 1320px; margin: 0 auto; padding: 0 24px 40px; color: var(--d
   .verdict { gap: 12px; } .stamp { font-size: 17px; padding: 9px 12px 8px; }
   .brand { padding-top: 18px; } .brand p { display: none; }
   .sheet { padding: 14px; }
-  .issues, .advlist { grid-template-columns: 1fr; }
+  .issues, .advlist, .warnlist { grid-template-columns: 1fr; }
   .rvtable thead { display: none; }
   .rvtable, .rvtable tbody { display: block; }
   .rvtable tr { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; padding: 10px 0; border-bottom: 1px solid var(--line-2); }

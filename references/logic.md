@@ -97,3 +97,17 @@ Collection = ready date (today if past), moved to Monday if weekend; delivery = 
 
   It is built once per file and updated in place, so fixes animate. It honours reduced motion, and a data table repeats every number.
 - **Never changes Red/Amber/Green.** Sample workbook: 12 of 25 stopped (3 / 4 / 3 / 2), 5 need a look, 8 clean.
+
+## 9. Road-freight warnings (Advisory, ⚠)
+- **Goods** (`ROAD_GOODS`). Bans and certificate or permit needs per destination (DE / FR / NL), matched on multi-word phrases. Look-alikes (`ROAD_SAFE`) and negations are stripped first. Sources and confidence are in `references/road-freight-rules.md`.
+- **Limits** (`roadLimits()`). These are the ADR 2025 limits for R-06's clear matches, plus spirits and lighters:
+  - LQ packages: 30 kg;
+  - aerosols: 1 L per can, or not subject at 50 ml or less;
+  - perfume: 5 L per bottle;
+  - flammable liquids: 1 L or 5 L by packing group;
+  - spirits: SP 144 and SP 145;
+  - lithium: SP 188, 20 Wh per cell and 100 Wh per battery, 30 kg per package;
+  - lighters: SP 658.
+
+  The limit is called exceeded only from a value stated in the description, or from the goods weight per carton.
+- **UI.** A ⚠ section in the report, a ⚠ line in the chat verdict and a ⚠ chip in the file table. Warnings are included in the Issues sheet of the export. They never change Red/Amber/Green.

@@ -206,6 +206,18 @@ details > summary { cursor: pointer; font-weight: 500; padding: 6px 0; }
 .advlist { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 10px; }
 .advcard { border-radius: 14px; padding: 12px 14px; border-color: rgba(182,156,255,.3); background: var(--adv-tint); font-size: 14.5px; }
 .adv-tag { display: inline-block; font: 500 10.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--adv); border: 1px solid rgba(182,156,255,.45); border-radius: 999px; padding: 2px 9px; margin-bottom: 6px; }
+.warnings { margin-top: 14px; }
+.warn-ico { color: var(--amber); font-size: .95em; line-height: 1; }
+.warnlist { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 10px; }
+.warncard { border-radius: 14px; padding: 12px 14px; border: 1px solid rgba(255,181,71,.3); background: var(--amber-tint); font-size: 14.5px; }
+.warncard.k-ban { border-color: rgba(255,92,122,.4); background: var(--red-tint); }
+.warncard.k-ban .warn-tag, .warncard.k-ban .warn-ico { color: var(--red); border-color: rgba(255,92,122,.45); }
+.warncard p { margin: 4px 0 0; }
+.warn-tag { display: inline-flex; gap: 4px; align-items: center; font: 500 10.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--amber); border: 1px solid rgba(255,181,71,.45); border-radius: 999px; padding: 2px 9px; }
+.warn-fix { color: var(--ink); }
+.warn-ref { font: 11px var(--mono); color: var(--dim); }
+.mini-warn { color: var(--amber); }
+.rchip.s-Warn { color: var(--amber); }
 .carriers, .confirm { margin-top: 22px; }
 .carriers h3, .confirm h3 { font-size: 17px; margin-bottom: 8px; }
 .confirm { padding: 16px 18px; border-radius: 16px; border: 1px solid var(--line); background: var(--glass); }
@@ -543,7 +555,7 @@ footer { max-width: 1320px; margin: 0 auto; padding: 0 24px 40px; color: var(--d
   .verdict { gap: 12px; } .stamp { font-size: 17px; padding: 9px 12px 8px; }
   .brand { padding-top: 18px; } .brand p { display: none; }
   .sheet { padding: 14px; }
-  .issues, .advlist { grid-template-columns: 1fr; }
+  .issues, .advlist, .warnlist { grid-template-columns: 1fr; }
   .rvtable thead { display: none; }
   .rvtable, .rvtable tbody { display: block; }
   .rvtable tr { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; padding: 10px 0; border-bottom: 1px solid var(--line-2); }
@@ -1575,6 +1587,7 @@ function evaluate(rawOrNorm, opts = {}) {
     const what = adr.map(d => `ADR class ${d.cls} ${d.cat} (matched “${d.words.join('”, “')}”; typical ${d.un.join(', ')})`).join('; ');
     advisories.push(`Possible dangerous goods (ADR class ${classes}) — ${it.sku} (“${it.description}”) may be ${what}. ${adr.map(d => d.ok).join(' ')} Otherwise it needs an ADR-capable carrier and the supplier's safety data sheet (SDS); pallet networks usually refuse it — confirm with the carrier or remove the item.`);
   });
+  const warnings = roadWarnings(b);
   const plan = rec ? palletPlan(b, rec.chosen.carrier) : null;
   if (plan && plan.fewer) { const f = plan.fewer; const c = rec.opts.find(o => o.carrier === f.carrier); advisories.push(`By weight, ${f.to} pallet${f.to === 1 ? ' is' : 's are'} enough on ${label(c)} (${kg(f.perPallet)} each), saving ${gbp(f.saving)} — check volume and stacking height before changing.`); }
 
@@ -1594,7 +1607,7 @@ function evaluate(rawOrNorm, opts = {}) {
     const arrive = nextWorkingDay(arriveRaw);
     eta = { collect, arrive, bufferDays, movedCollect: collect !== start, movedArrive: arrive !== arriveRaw, fromToday: b.ready < today };
   }
-  return { b, checks, dataIssues: b.dataIssues, advisories, corrections: b.corrections || [], status, reds, ambers, rec, plan, eta, net, today };
+  return { b, checks, dataIssues: b.dataIssues, advisories, warnings, corrections: b.corrections || [], status, reds, ambers, rec, plan, eta, net, today };
 }
 
 // ---------- Plain-language confirmation ----------
@@ -1621,8 +1634,213 @@ function confirmation(ev, reviewed = 0) {
   next.push(`Label all ${fmtNum(b.cartons)} cartons and ${fmtNum(b.pallets)} pallet${b.pallets === 1 ? '' : 's'} with the booking reference${b.destType === 'Warehouse' ? ' and SKU/quantity per carton — the warehouse checks counts against what you declared' : ''}.`);
   if (eta) next.push(`Have the goods packed and ready at ${b.originCity} on ${fmtDate(eta.collect)}.`);
   if (b.destType === 'Warehouse') next.push(b.appointment === 'Yes' ? `Make sure your delivery appointment matches the estimated arrival (${eta ? fmtDate(eta.arrive) : 'see above'}).` : `Book a delivery appointment at the warehouse for ${eta ? fmtDate(eta.arrive) : 'the arrival date'}${eta && eta.bufferDays ? ` — the estimate already allows ${eta.bufferDays} days to get the slot` : ''}.`);
+  next.push('Use heat-treated wooden pallets with a legible ISPM 15 stamp; untreated wood packaging is refused or destroyed at the EU border.');
   next.push(`EU import clearance in ${b.destCountry}, then delivery. You get tracking updates at collection, customs and delivery.`);
   return { head, lines, next };
+}
+
+// ---------- Road-freight warnings (UK → DE/FR/NL by road; Advisory only — never changes Red/Amber/Green) ----------
+// Goods that are banned, or need a certificate or permit, on import into the destination country, and the ADR limits
+// at which R-06 goods could still move by road with a specialist carrier. Sources and confidence: references/road-freight-rules.md.
+const DESTS = ['Germany', 'France', 'Netherlands'];
+const all = st => Object.fromEntries(DESTS.map(c => [c, st]));
+// Phrases that look like a match but are not (removed before matching).
+const ROAD_SAFE = /\b(?:vegan|plant[- ]based|dairy[- ]free|meat[- ]free|faux|imitation|fake|artificial|synthetic|toy|nerf|water|effect|print(?:ed)?|patterned|colou?r(?:ed)?|style|look)\s+[\w-]+(?:\s+[\w-]+)?|\b[\w-]+[- ](?:colou?r(?:ed)?|effect|print|pattern)\b|\bcheese (?:graters?|boards?|kni(?:fe|ves)|slicers?|domes?|planes?|cloths?)\b|\b(?:peanut|shea|cocoa|body|apple|nut) butter\b|\bbutter (?:kni(?:fe|ves)|dish(?:es)?|curlers?)\b|\bbutterfl(?:y|ies)\b(?! knife| knives)|\begg (?:cups?|timers?|poachers?|separators?|slicers?)\b|\begg[- ]shaped\b|\beaster eggs?\b|\bhoney (?:dippers?|pots?|spoons?|oak|blonde)\b|\bmeat (?:thermometers?|tenderi[sz]ers?|grinders?|mincers?|cleavers?|hooks?|slicers?|probes?)\b|\bchicken (?:wire|feeders?|coops?)\b|\bsalmon pink\b|\bfish (?:tanks?|nets?|bowls?|ornaments?)\b|\b(?:wine|beer|gin|whisk(?:e)?y|champagne|prosecco|cider) (?:glass(?:es)?|racks?|coolers?|openers?|stoppers?|mugs?|steins?|stones?|tumblers?|decanters?|buckets?|charms?|aerators?|books?)\b|\bcigarette (?:lighters?|cases?|papers?|holders?)\b|\btobacco (?:pouch(?:es)?|pipes?)\b|\bcompost (?:bins?|caddies?|bags?)\b|\bplant (?:pots?|stands?|labels?|food|feed|sprayers?|misters?)\b|\b(?:glue|staple|massage|nail|spray|grease|caulking|heat|bubble|soldering) guns?\b|\bpistol grips?\b|\bpill (?:organi[sz]ers?|boxes?|cutters?)\b|\bmedicine (?:cabinets?|boxes?|cups?|spoons?|bags?)\b|\bseal(?:ant|ed|ing|s)?\b(?! ?(?:skin|fur|oil|leather|pelt))|\brubber seals?\b|\bknife (?:sharpeners?|blocks?|rolls?)\b/gi;
+const ROAD_GOODS = [
+  { id: 'animal', kind: 'permit', cat: 'products of animal origin (meat, dairy, fish, eggs, honey)', st: all('permit'),
+    re: /\bbeef\b|\bpork\b|\blamb\b(?! ?swool)|\bchicken\b|\bpoultry\b|\bturkey (?:breast|meat|crown)s?\b|\bmeat\b|\bjerky\b|\bbiltong\b|\bsalami\b|\bchorizo\b|\bpepperoni\b|\bham\b|\bbacon\b|\bsausages?\b|\bpork pies?\b|\bpât[ée]\b|\bcheddar\b|\bcheeses?\b|\bbutter\b|\bbuttermilk\b|\bmilk powder\b|\bwhey\b|\byog(?:h)?urts?\b|\bcream cheese\b|\bsalmon\b|\bprawns?\b|\bshrimps?\b|\bfish (?:fillets?|fingers?|cakes?)\b|\bcod fillets?\b|\btuna\b|\bmackerel\b|\bsardines?\b|\bshellfish\b|\bmussels?\b|\boysters?\b|\beggs?\b|\bhoney\b|\bgelatine?\b|\bstock cubes?\b|\bbone broth\b|\blard\b|\bdripping\b/i,
+    text: 'needs an export health certificate (EHC) and a check at the EU border control post (usually Calais, Dunkirk or Rotterdam on this road route). The EU importer must pre-notify in TRACES. Wild-caught fish also needs a UK catch certificate.',
+    fix: 'Get the EHC before dispatch and give the importer the details to pre-notify. Shelf-stable products with no meat may only need a private attestation.',
+    ref: 'Reg. (EU) 2017/625 Art. 47; gov.uk “Export or move food, drink and agricultural products”' },
+  { id: 'composite', kind: 'permit', cat: 'shelf-stable composite food (may contain dairy or egg)', st: all('permit'), after: 'animal',
+    re: /\b(?:milk )?chocolates?\b|\bbiscuits?\b|\bcookies\b|\bconfectionery\b|\bfudge\b|\btoffees?\b|\bdried pasta\b|\begg pasta\b|\bcakes?\b(?! (?:stands?|tins?|toppers?|boxes?|moulds?|molds?))/i,
+    text: 'may contain dairy or egg. Shelf-stable composites with no meat need only a private attestation signed by the importer, not an EHC; anything chilled, frozen or with meat needs a composite EHC.',
+    fix: 'Confirm the recipe. If it has dairy or egg, send a private attestation with the goods.',
+    ref: 'Reg. (EU) 2021/630 Art. 3; gov.uk “Export or move composite food products”' },
+  { id: 'petfood', kind: 'permit', cat: 'pet food and animal by-products', st: all('permit'),
+    re: /\b(?:dog|cat|pet|puppy|kitten) (?:food|treats?|chews?|biscuits?|kibble)\b|\bkibble\b|\brawhide\b|\bpigs?'? ears?\b|\bbully sticks?\b|\bfish food\b|\bbone meal\b/i,
+    text: 'needs an export health certificate (EHC) and a check at the EU border control post.',
+    fix: 'Get the pet-food EHC before dispatch.',
+    ref: 'gov.uk “Export food for animals: special rules”' },
+  { id: 'soil', kind: 'ban', cat: 'soil, seed potatoes or grapevine plants', st: all('ban'),
+    re: /\btop ?soil\b|\bpotting (?:soil|compost|mix)\b|\bcompost\b|\bgarden soil\b|\bsoil\b|\bseed potatoes\b|\bgrape ?vines?\b|\bvine plants?\b/i,
+    text: 'cannot be imported into the EU from Great Britain (soil and growing media, seed potatoes and Vitis plants are prohibited).',
+    fix: 'Remove it from the shipment. Ship plants bare-root or in a soil-free medium, with a phytosanitary certificate.',
+    ref: 'Reg. (EU) 2016/2031 Art. 40; gov.uk “Export plants and plant products”' },
+  { id: 'plants', kind: 'permit', cat: 'live plants and plant products', st: all('permit'), after: 'soil',
+    re: /\blive plants?\b|\bpotted plants?\b|\bhouse ?plants?\b|\bseedlings?\b|\bsaplings?\b|\b(?:flower|tulip|plant|daffodil) bulbs\b|\bcut flowers\b|\bfresh flowers\b|\bbonsai(?: trees?)?\b|\bfruit trees?\b|\bchristmas trees?\b(?! (?:decorations?|lights?|ornaments?|baubles?|toppers?|stands?|skirts?))|\bpotatoes\b|\bplug plants\b/i,
+    text: 'needs a phytosanitary certificate from APHA after an inspection, and a check at the EU border control post.',
+    fix: 'Book the APHA inspection and certificate before dispatch.',
+    ref: 'Reg. (EU) 2016/2031; gov.uk “Export plants and plant products”' },
+  { id: 'cites', kind: 'permit', cat: 'CITES-listed species (ivory, rosewood, reptile skins, coral, caviar)', st: all('permit'),
+    re: /\bivory\b|\belephant tusks?\b|\brosewood\b|\bdalbergia\b|\b(?:python|crocodile|alligator|caiman|lizard|snake) ?(?:skin|leather)\b|\b(?:real|red|black|precious) coral\b|\bcoral (?:jewell?ery|necklaces?|beads?|branch(?:es)?)\b|\btortoise ?shell\b|\bcaviar\b|\bsturgeon\b|\bagarwood\b|\boud wood\b|\blive (?:parrots?|birds?|tortoises?|reptiles?)\b/i,
+    text: 'needs an EU import permit (Annex A/B species) and a UK CITES export permit from APHA, through a designated customs office. Ivory items are effectively barred from export for sale under the UK Ivory Act 2018 unless registered or exempt.',
+    fix: 'Get both permits before booking, or confirm the material is not a listed species (e.g. imitation leather).',
+    ref: 'Reg. (EC) 338/97 Art. 4; gov.uk “CITES imports and exports”; Ivory Act 2018' },
+  { id: 'firearms', kind: 'permit', cat: 'firearms and gun parts', st: all('permit'),
+    re: /\bfirearms?\b|\brifles?\b|\bshotguns?\b|\bpistols?\b|\bhandguns?\b|\brevolvers?\b|\bair ?(?:rifles?|pistols?|guns?)\b|\bgun (?:parts|barrels?)\b|\bsilencers?\b|\bsound moderators?\b|\bblank[- ]firing\b|\bflare guns?\b/i,
+    text: { Germany: 'needs a permit from the German weapons authority before transport, and a UK export licence.', France: 'needs a French import authorisation (AIMG), and a UK export licence.', Netherlands: 'needs consent under the Wet wapens en munitie (Art. 14), and a UK export licence.' },
+    fix: 'Do not book until you have the importer’s permit and the UK export licence.',
+    ref: 'zoll.de “Waffen, Munition”; douane.gouv.fr AIMG; Wwm Art. 14' },
+  { id: 'knives', kind: 'ban', cat: 'butterfly or switchblade knives', st: { Germany: 'ban', Netherlands: 'ban' },
+    re: /\bbutterfly kni(?:fe|ves)\b|\bbalisongs?\b|\bswitch ?blades?\b|\bflick kni(?:fe|ves)\b|\bgravity kni(?:fe|ves)\b|\bOTF kni(?:fe|ves)\b|\bstilettos? knives?\b/i,
+    text: { Germany: 'is a prohibited weapon (WaffG Anlage 2, 1.4.1 and 1.4.3). Only side-opening blades up to 8.5 cm, single-edged, for a legitimate need are exempt.', Netherlands: 'is a prohibited weapon (Wet wapens en munitie, category I).' },
+    fix: 'Remove it from a shipment to this country.',
+    ref: 'WaffG Anlage 2 Abschnitt 1; Wet wapens en munitie Art. 2 and 13' },
+  { id: 'blunt', kind: 'ban', cat: 'knuckle dusters and throwing stars', st: { Germany: 'ban', Netherlands: 'ban' },
+    re: /\bknuckle ?dusters?\b|\bbrass knuckles\b|\bthrowing stars?\b|\bshuriken\b/i,
+    text: { Germany: 'is a prohibited weapon (WaffG Anlage 2, 1.3.2–1.3.3).', Netherlands: 'is a prohibited weapon (Wet wapens en munitie, category I).' },
+    fix: 'Remove it from a shipment to this country.',
+    ref: 'WaffG Anlage 2 Abschnitt 1; Wet wapens en munitie Art. 2' },
+  { id: 'stun', kind: 'ban', cat: 'stun guns and tasers', st: { Germany: 'ban', Netherlands: 'ban' },
+    re: /\bstun ?guns?\b|\btasers?\b|\belectroshock (?:weapons?|devices?)\b/i,
+    text: { Germany: 'is a prohibited weapon unless officially approved and test-marked (WaffG Anlage 2, 1.3.6).', Netherlands: 'is a prohibited weapon (Wet wapens en munitie, category II).' },
+    fix: 'Remove it from a shipment to this country.',
+    ref: 'WaffG Anlage 2 Abschnitt 1; Wet wapens en munitie Art. 2' },
+  { id: 'pepper', kind: 'ban', cat: 'pepper or CS spray', st: { Germany: 'ban' },
+    re: /\bpepper sprays?\b|\bcs sprays?\b|\btear gas\b|\bdefen[cs]e sprays?\b/i,
+    text: 'is a prohibited weapon unless it is approved, limited in range and carries an official test mark (WaffG Anlage 2, 1.3.5).',
+    fix: 'Remove it, or confirm it carries the German official test mark.',
+    ref: 'WaffG Anlage 2 Abschnitt 1, 1.3.5' },
+  { id: 'snus', kind: 'ban', cat: 'snus (tobacco for oral use)', st: all('ban'),
+    re: /\bsnus\b|\boral tobacco\b|\btobacco for oral use\b/i,
+    text: 'cannot be placed on the EU market.',
+    fix: 'Remove it from the shipment.',
+    ref: 'Directive 2014/40/EU Art. 17' },
+  { id: 'pouches', kind: 'ban', cat: 'nicotine pouches', st: { France: 'ban', Netherlands: 'ban' },
+    re: /\bnicotine pouch(?:es)?\b|\bnic pouch(?:es)?\b|\bnicotine sachets?\b/i,
+    text: { France: 'is banned: import and possession have been prohibited since 1 April 2026.', Netherlands: 'is banned outright (totaalverbod).' },
+    fix: 'Remove them from a shipment to this country.',
+    ref: 'France: décret, in force 1 Apr 2026 (service-public.gouv.fr); rijksoverheid.nl “Roken ontmoedigen”' },
+  { id: 'puffs', kind: 'ban', cat: 'disposable vapes', st: { France: 'ban' },
+    re: /\bdisposable (?:vapes?|e-?cig(?:arette)?s?)\b|\bpuff bars?\b|\bsingle[- ]use vapes?\b/i,
+    text: 'cannot be sold or held for sale in France (Loi 2025-175), so a commercial import has no lawful buyer.',
+    fix: 'Remove them from a shipment to France.',
+    ref: 'Loi n° 2025-175' },
+  { id: 'flavours', kind: 'ban', cat: 'flavoured e-liquids', st: { Netherlands: 'ban' },
+    test: t => /\be-?liquids?\b|\bvape (?:juice|liquid)s?\b|\bvapes?\b|\be-?cig(?:arette)?s?\b/i.test(t) && /\b(?:mint|menthol|fruit|strawberry|mango|berry|berries|blueberry|watermelon|grape|apple|cherry|lemon|lime|peach|ice|cola|candy|vanilla|custard|dessert|tropical)\b/i.test(t),
+    text: 'may only be sold with a tobacco flavour in the Netherlands since 1 January 2023.',
+    fix: 'Send only tobacco-flavoured e-liquids to the Netherlands.',
+    ref: 'rijksoverheid.nl “Roken ontmoedigen”' },
+  { id: 'excise', kind: 'permit', cat: 'alcohol or tobacco (excise goods)', st: all('permit'),
+    re: /\bbeers?\b|\blagers?\b|\bwines?\b|\bcider\b|\bperry\b|\bprosecco\b|\bchampagne\b|\bspirits\b|\bgin\b|\bvodka\b|\bwhisk(?:e)?y\b|\brum\b|\bbrandy\b|\bliqueurs?\b|\bcigarettes?\b|\bcigars?\b|\brolling tobacco\b|\btobacco\b|\bshisha\b|\be-?liquids?\b|\bvape juice\b/i,
+    text: 'is an excise good: duty is due on import unless it goes straight into duty suspension, which needs a tax warehouse or registered consignee and an e-AD in EMCS.',
+    fix: 'Get the consignee’s excise number and the EMCS reference before dispatch.',
+    ref: 'Directive (EU) 2020/262 Art. 6' },
+  { id: 'medicines', kind: 'permit', cat: 'medicines', st: all('permit'),
+    re: /\bprescription (?:medicines?|drugs?)\b|\bmedicines?\b|\bmedicinal products?\b|\bpharmaceuticals?\b|\bantibiotics?\b|\binsulin\b|\bcodeine\b|\btramadol\b|\bdiazepam\b|\bmorphine\b|\boxycodone\b|\bparacetamol\b|\bibuprofen\b|\baspirin\b/i,
+    text: 'needs an import authorisation and a marketing authorisation in the destination, and the consignee needs a wholesale licence. Controlled drugs also need a UK Home Office export licence.',
+    fix: 'Get the consignee’s licences (and the Home Office licence for controlled drugs) before dispatch.',
+    ref: 'Directive 2001/83/EC Art. 40(3); gov.uk “Controlled drugs: import and export licences”' },
+  { id: 'catdogfur', kind: 'ban', cat: 'cat or dog fur', st: all('ban'),
+    re: /\b(?:cat|dog)[- ](?:fur|skin|pelt)s?\b/i,
+    text: 'cannot be imported into the EU.',
+    fix: 'Remove it from the shipment.',
+    ref: 'Reg. (EC) 1523/2007 Art. 3' },
+  { id: 'seal', kind: 'ban', cat: 'seal products', st: all('ban'),
+    re: /\bseal ?skins?\b|\bseal (?:fur|oil|leather|pelts?)\b/i,
+    text: 'cannot be placed on the EU market (Inuit-hunt products with an attestation are the only exception).',
+    fix: 'Remove it unless it has a recognised Inuit attestation.',
+    ref: 'Reg. (EC) 1007/2009 Art. 3' },
+  { id: 'mercury', kind: 'ban', cat: 'mercury-added measuring devices', st: all('ban'),
+    re: /\bmercury (?:thermometers?|barometers?|sphygmomanometers?|manometers?|hygrometers?|switch(?:es)?)\b/i,
+    text: 'cannot be imported into the EU.',
+    fix: 'Remove it, or switch to a mercury-free (digital) version.',
+    ref: 'Reg. (EU) 2017/852 Art. 5 and Annex II' },
+  { id: 'torture', kind: 'ban', cat: 'restraint or torture goods', st: all('ban'),
+    re: /\bthumb ?cuffs\b|\bthumb ?screws\b|\bleg irons\b|\bbar fetters\b|\b(?:electric )?(?:shock|stun) (?:belts?|cuffs|sleeves?)\b/i,
+    text: 'cannot be imported into the EU.',
+    fix: 'Remove it from the shipment.',
+    ref: 'Reg. (EU) 2019/125 Art. 4' },
+  { id: 'ods', kind: 'ban', cat: 'ozone-depleting refrigerants or halon', st: all('ban'),
+    re: /\bR-?(?:22|12)\b(?= ?(?:refrigerant|gas|air ?con\w*|cylinders?|units?))|\bhalon\b|\bCFC\b/i,
+    text: 'cannot be imported into the EU, including equipment that contains it.',
+    fix: 'Remove it from the shipment.',
+    ref: 'Reg. (EU) 2024/590 Art. 5' },
+];
+const COUNTRY_WORD = { Germany: 'Germany', France: 'France', Netherlands: 'the Netherlands' };
+function roadMatch(desc, rule) {
+  const t = clean(desc); if (!t) return null;
+  const safe = t.replace(ROAD_SAFE, ' ');
+  if (rule.test) return rule.test(safe) ? [] : null;
+  const g = new RegExp(rule.re.source, 'gi'); let m; const words = [];
+  while ((m = g.exec(safe))) {
+    const before = safe.slice(0, m.index), after = safe.slice(m.index + m[0].length);
+    if (NEG_BEFORE.test(before) || NEG_AFTER.test(after)) continue;
+    words.push(m[0].toLowerCase());
+  }
+  return words.length ? [...new Set(words)] : null;
+}
+// Description parsers for the limits. Values are returned only when the description states them.
+function parseVolumeMl(t) { const m = /(\d+(?:[.,]\d+)?)\s*(ml|cl|l|ltrs?|litres?|liters?)\b/i.exec(t); if (!m) return null; const v = parseFloat(m[1].replace(',', '.')); const u = m[2].toLowerCase(); return u === 'ml' ? v : u === 'cl' ? v * 10 : v * 1000; }
+function parseAbv(t) { const m = /(\d+(?:[.,]\d+)?)\s*%\s*(?:abv|vol|alc|alcohol|proof)?/i.exec(t); return m ? parseFloat(m[1].replace(',', '.')) : null; }
+function parseWh(t) { const m = /(\d+(?:[.,]\d+)?)\s*wh\b/i.exec(t); return m ? parseFloat(m[1].replace(',', '.')) : null; }
+function parseMah(t) { const m = /(\d{1,3}(?:[,.]\d{3})+|\d+)\s*mah\b/i.exec(t); return m ? parseFloat(m[1].replace(/[,.]/g, '')) : null; }
+const LQ_NOTE = 'Carriers A, B and C carry no dangerous goods (R-06); this is what a specialist ADR carrier could accept.';
+// ADR 2025 limits for goods R-06 flags (and lighters). Every value: references/road-freight-rules.md.
+function roadLimits(it, dg) {
+  const out = [], t = clean(`${it.description}`), cartonKg = isNum(it.upc) && isNum(it.unitWeight) ? it.upc * it.unitWeight : null;
+  const cats = new Set(dg.definite.map(d => d.cat)); // limits only for clear R-06 matches; spirits handled below
+  if (dg.possible.some(d => d.cat === 'lithium batteries') && (parseWh(t) != null || parseMah(t) != null)) cats.add('lithium batteries');
+  const lim = (title, text, fix, ref) => out.push({ kind: 'limit', title, text, fix, ref });
+  const carton = (max, what) => (cartonKg != null && cartonKg > max
+    ? ` Each carton already holds ${kg(cartonKg)} of goods (${it.upc} × ${kg(it.unitWeight)}) — over the ${max} kg gross ${what} limit, so re-pack into lighter cartons.`
+    : ` Each carton must weigh ${max} kg gross or less${cartonKg != null ? ` (goods alone: ${kg(cartonKg)})` : ''}.`);
+  const ml = parseVolumeMl(t);
+  const isAlcohol = /\b(?:vodka|whisk(?:e)?y|gin|rum|brandy|liqueurs?|spirits|wine|beer|cider|prosecco|champagne|alcoholic)\b/i.test(t);
+  if (cats.has('lithium batteries')) {
+    const wh = parseWh(t), mah = parseMah(t);
+    if (wh != null && wh > 100) lim('Over the road limit', `${it.sku} is ${wh} Wh — over the 100 Wh battery limit of ADR special provision 188, so it is fully regulated (UN 3480/3481, class 9: UN packaging, labels and a transport document).`, 'Use an ADR class 9 carrier, or remove it.', 'ADR 2025, special provision 188 (b)');
+    else lim('Road limit', `${it.sku}: lithium-ion batteries move under the lighter ADR special provision 188 only if each cell is 20 Wh or less and each battery 100 Wh or less, UN 38.3-tested, in strong packaging with short-circuit protection.${wh != null ? ` It states ${wh} Wh (within the battery limit — check each cell is 20 Wh or less).` : mah != null ? ` It states ${PF_fmt(mah)} mAh, about ${Math.round(mah * 3.7 / 1000)} Wh at 3.7 V — read the Wh marked on the case; a single-cell pack over 20 Wh is fully regulated.` : ' The description gives no Wh rating — read it from the case.'}${carton(30, 'package')} (No 30 kg cap when batteries are installed in equipment.) ${LQ_NOTE}`, 'Add the Wh rating to the description and confirm UN 38.3 testing.', 'ADR 2025, special provision 188 (a), (b), (h)');
+  }
+  if (cats.has('aerosols')) {
+    if (ml != null && ml <= 50) lim('Road limit', `${it.sku}: aerosols of 50 ml or less with only non-toxic contents are not subject to ADR (special provision 190).`, 'Confirm the contents are non-toxic.', 'ADR 2025, special provision 190');
+    else if (ml != null && ml > 1000) lim('Over the road limit', `${it.sku} is ${ml / 1000} L per can — over the 1 L limited-quantity limit for aerosols, so it is fully regulated (UN 1950).`, 'Use an ADR carrier, or remove it.', 'ADR 2025, Table A UN 1950, column 7a');
+    else lim('Road limit', `${it.sku}: aerosols can travel as a limited quantity if each can is 1 L or less${ml != null ? ` (it states ${ml} ml ✓)` : ' — check the can size'}.${carton(30, 'limited-quantity package')} Mark cartons with the LQ diamond. ${LQ_NOTE}`, 'Confirm the can size and use an LQ-capable carrier.', 'ADR 2025, Table A UN 1950 col. 7a; 3.4.2');
+  }
+  if (/\blighter (?:refills?|gas)\b|\bbutane refills?\b/i.test(t)) {
+    lim('Over the road limit', `${it.sku}: lighter refills (UN 1057) cannot travel as a limited quantity (column 7a is 0); they need a full ADR consignment.`, 'Use an ADR carrier, or remove them.', 'ADR 2025, Table A UN 1057, column 7a; 3.4.1');
+    cats.delete('flammable liquids');
+  }
+  if (cats.has('flammable liquids') && !isAlcohol) {
+    const perfume = /\bperfumes?\b|\beau de\b|\bcolognes?\b|\bfragrance\b/i.test(t);
+    const max = perfume ? 5000 : null;
+    if (max && ml != null && ml > max) lim('Over the road limit', `${it.sku} is ${ml / 1000} L per bottle — over the 5 L limited-quantity limit for perfumery products (UN 1266).`, 'Use an ADR carrier, or ship smaller bottles.', 'ADR 2025, Table A UN 1266, column 7a');
+    else if (perfume) lim('Road limit', `${it.sku}: perfumery products can travel as a limited quantity if each bottle is 5 L or less${ml != null ? ` (it states ${ml} ml ✓)` : ''}.${carton(30, 'limited-quantity package')} ${LQ_NOTE}`, 'Mark cartons with the LQ diamond and use an LQ-capable carrier.', 'ADR 2025, Table A UN 1266 col. 7a; 3.4.2');
+    else lim('Road limit', `${it.sku}: flammable liquids can travel as a limited quantity only in small containers — 1 L each if packing group II, 5 L if packing group III (500 ml for paint of group I); the safety data sheet gives the group${ml != null ? `. It states ${ml >= 1000 ? ml / 1000 + ' L' : ml + ' ml'}${ml > 5000 ? ' — over every limit, so fully regulated' : ml > 1000 ? ' — over the group II limit' : ''}` : ''}.${carton(30, 'limited-quantity package')} ${LQ_NOTE}`, 'Check section 14 of the safety data sheet for the UN number and packing group.', 'ADR 2025, Table A col. 7a (UN 1263, 1993, 1090); 3.4.2');
+  }
+  if (isAlcohol && (cats.has('flammable liquids') || /\b(?:vodka|whisk(?:e)?y|gin|rum|brandy|liqueurs?|spirits)\b/i.test(t))) {
+    const abv = parseAbv(t);
+    if (abv != null && abv <= 24) lim('Road limit', `${it.sku} is ${abv}% ABV: not subject to ADR (special provision 144). R-06 still asks you to confirm it, as the rulebook says.`, 'Add the ABV to the description when you confirm R-06.', 'ADR 2025, special provision 144');
+    else if (abv != null && abv <= 70) lim('Road limit', `${it.sku} is ${abv}% ABV: by road, alcoholic beverages of 70% ABV or less in containers of 250 L or less are not subject to ADR (special provision 145). R-06 still treats spirits as a possible flammable liquid, so confirm it there.`, 'Add the ABV to the description when you confirm R-06.', 'ADR 2025, special provision 145');
+    else if (abv != null) lim('Road limit', `${it.sku} is ${abv}% ABV — over 70%, so it is regulated (UN 3065, packing group II); limited quantity allows 5 L per bottle.${carton(30, 'limited-quantity package')} ${LQ_NOTE}`, 'Use an LQ-capable carrier.', 'ADR 2025, Table A UN 3065 col. 7a');
+    else lim('Road limit', `${it.sku}: spirits of 70% ABV or less in containers of 250 L or less are not subject to ADR by road (special provision 145); above 70%, 5 L per bottle as a limited quantity. The description gives no ABV.`, 'Add the ABV (e.g. “40% ABV”) to the description.', 'ADR 2025, special provisions 144 and 145');
+  }
+  if (dg.adr.some(d => d.cls === '2' && d.words.some(w => /lighter/.test(w)))) lim('Road limit', `${it.sku}: lighters made to EN ISO 9994 can travel with reduced rules if each package is 10 kg gross or less and the vehicle carries 100 kg or less, marked “UN 1057 LIGHTERS”.${cartonKg != null && cartonKg > 10 ? ` Each carton already holds ${kg(cartonKg)} of lighters — over the 10 kg limit.` : ''} ${LQ_NOTE}`, 'Re-pack into cartons of 10 kg or less and confirm EN ISO 9994.', 'ADR 2025, special provision 658');
+  return out;
+}
+const PF_fmt = n => n.toLocaleString('en-GB');
+// All road-freight warnings for a booking: bans and permits for its destination country, then ADR limits.
+function roadWarnings(b) {
+  const dest = b.destCountry, out = [];
+  if (!DESTS.includes(dest)) return out;
+  (b.items || []).forEach(it => {
+    const hits = new Set();
+    ROAD_GOODS.forEach(r => {
+      const st = r.st[dest]; if (!st) return;
+      if (r.after && hits.has(r.after)) return;
+      const words = roadMatch(it.description, r); if (!words) return;
+      hits.add(r.id);
+      const where = Object.keys(r.st).length === DESTS.length && typeof r.text === 'string' ? 'into the EU' : `into ${COUNTRY_WORD[dest]}`;
+      out.push({ kind: st, rule: r.id, country: dest, sku: it.sku,
+        title: st === 'ban' ? `Banned in ${COUNTRY_WORD[dest]}` : 'Needs a certificate or permit',
+        text: `${it.sku} (“${it.description}”) looks like ${r.cat}${words.length ? ` (matched “${words.join('”, “')}”)` : ''} — ${where}, it ${typeof r.text === 'string' ? r.text : r.text[dest]}`,
+        fix: r.fix, ref: r.ref });
+    });
+    const dg = scanDG(`${it.description} ${it.sku}`);
+    roadLimits(it, dg).forEach(l => out.push({ ...l, country: dest, sku: it.sku }));
+  });
+  return out;
 }
 
 // ---------- Outcomes (reporting only; never changes a booking's status) ----------
@@ -1670,7 +1888,7 @@ function avoidedCost(out, costs = {}, which = 'avoided') {
   return { lines, low: lines.reduce((t, l) => t + l.totalLow, 0), high: lines.reduce((t, l) => t + l.totalHigh, 0) };
 }
 
-const PF = { CARRIERS, RULES, PRICE_NOTE, OUTCOME_STAGES, outcomes, avoidedCost, CITY_COUNTRY, ORIGIN_CITIES, COO_LIST, PRIORITIES, EXAMPLE_BOOKING, EXAMPLE_ITEM,
+const PF = { CARRIERS, RULES, PRICE_NOTE, ROAD_GOODS, roadWarnings, parseVolumeMl, parseAbv, parseWh, parseMah, OUTCOME_STAGES, outcomes, avoidedCost, CITY_COUNTRY, ORIGIN_CITIES, COO_LIST, PRIORITIES, EXAMPLE_BOOKING, EXAMPLE_ITEM,
   num, gbp, kg, fmtNum, fmtDate, fmtDateLong, todayISO, addDays, weekday, isoFromYMD, parseSheetDate, normCountry, normCity, normPriority, normDestType, normYesNo, normHS,
   DG_ADR, scanDG, hsHint, setHsIndex, getHsIndex, hsMeta, hsLookup, hsHeading, hsShort, hsRecommend, hsTokens, hsSuggest, hsSugText, hsMaterialsOf, HS_MATERIALS, parseSheets, normaliseBooking, recommend, palletPlan, evaluate, confirmation, label, isNum, clean, isBlank, MONTHS, DAY_NAMES };
 if (typeof module !== 'undefined' && module.exports) module.exports = PF; else root.PF = PF;
@@ -2377,6 +2595,35 @@ function runTests(PF, CHAT) {
   T('Outcomes', 'Avoided cost: only one bound entered → used for both; no inputs → £0 and no lines', () => { const o = PF.outcomes([ev(b => b.items[0].hs = 6912)], [ev()]); const a = PF.avoidedCost(o, { border: { high: 800 } }); const z = PF.avoidedCost(o, {}); return expect(a.low === 800 && a.high === 800 && z.lines.length === 0 && z.high === 0, JSON.stringify(a)); });
   T('Outcomes', 'At stake as uploaded counts every stop, fixed or not', () => { const o = PF.outcomes([ev(b => b.items[0].hs = 6912), ev(b => b.gross = 1800)], [ev(), ev(b => b.gross = 1800)]); const c = PF.avoidedCost(o, { border: { low: 500 }, collection: { low: 200 } }, 'before'); return expect(c.low === 700 && PF.avoidedCost(o, { border: { low: 500 }, collection: { low: 200 } }).low === 500, JSON.stringify(c)); });
 
+  // ---------- Road-freight warnings ----------
+  const rw = (desc, dest = 'Germany', x = {}) => PF.roadWarnings({ destCountry: dest, items: [{ sku: 'S1', description: desc, upc: x.upc ?? 10, unitWeight: x.uw ?? 0.3 }] });
+  const rules = (desc, dest, x) => rw(desc, dest, x).map(w => w.rule || w.title);
+  const pos = [['Beef jerky 100g', 'Germany', 'animal'], ['Smoked salmon fillets', 'France', 'animal'], ['Cheddar cheese 200g', 'Netherlands', 'animal'], ['Milk chocolate bar', 'Germany', 'composite'], ['Dog food 2kg', 'France', 'petfood'],
+    ['Potting compost 40L', 'Germany', 'soil'], ['Potted plant', 'France', 'plants'], ['Elephant ivory carving', 'Germany', 'cites'], ['Python skin handbag', 'France', 'cites'], ['Air rifle', 'Netherlands', 'firearms'],
+    ['Butterfly knife', 'Germany', 'knives'], ['Switchblade', 'Netherlands', 'knives'], ['Knuckle duster', 'Germany', 'blunt'], ['Stun gun', 'Netherlands', 'stun'], ['Pepper spray', 'Germany', 'pepper'], ['Snus pouches', 'France', 'snus'],
+    ['Nicotine pouches mint', 'France', 'pouches'], ['Disposable vape 600 puffs', 'France', 'puffs'], ['Mango e-liquid 10ml', 'Netherlands', 'flavours'], ['Gin 70cl', 'Germany', 'excise'], ['Paracetamol tablets', 'France', 'medicines'],
+    ['Cat fur trim', 'Germany', 'catdogfur'], ['Sealskin boots', 'France', 'seal'], ['Mercury thermometer', 'Netherlands', 'mercury'], ['Thumbcuffs', 'Germany', 'torture'], ['Halon fire extinguisher', 'France', 'ods']];
+  pos.forEach(([d, c, id]) => T('Road warnings', `“${d}” to ${c} → ${id}`, () => { const r = rules(d, c); return expect(r.includes(id), r.join(', ')); }));
+  const neg = ['Vegan cheese slices', 'Cheese grater', 'Butter knife set', 'Peanut butter', 'Egg cup', 'Honey dipper', 'Honey oak shelf', 'Meat thermometer', 'Chicken wire roll', 'Salmon pink scarf', 'Fish tank', 'Plant pot ceramic', 'Artificial plants', 'Plant-based milk', 'Compost bin',
+    'Ivory-coloured cushion', 'Faux croc bag', 'Snake print dress', 'Coral-colour fabric', 'Rosewood effect laminate', 'Glue gun', 'Staple gun', 'Massage gun', 'Water pistol', 'Toy rifle', 'Kitchen knife set', 'Pepper grinder', 'Wine glasses set', 'Beer mug', 'Whisky stones',
+    'Cigarette case', 'Rubber seal ring', 'Silicone sealant', 'Faux fur throw', 'Dog lead', 'Cat bed', 'Pill organiser', 'Medicine cabinet', 'Digital thermometer', 'Christmas tree lights', 'Easter egg hunt kit', 'Cake stand', 'Ginger ale'];
+  neg.forEach(d => T('Road warnings', `Look-alike “${d}” → no ban or permit`, () => { const r = rw(d).filter(w => w.kind !== 'limit'); return expect(!r.length, r.map(w => w.rule).join(', ')); }));
+  T('Road warnings', 'Country-specific: butterfly knife is not flagged for France (unverified there)', () => expect(!rules('Butterfly knife', 'France').length));
+  T('Road warnings', 'Country-specific: nicotine pouches are not flagged for Germany', () => expect(!rules('Nicotine pouches', 'Germany').length));
+  T('Road warnings', 'Negation: “alcohol-free beer” is still beer (excise), “battery-free torch” gives no lithium limit', () => expect(rules('Battery-free torch').length === 0));
+  T('Road warnings', 'Unknown destination → no warnings', () => expect(rw('Beef jerky', 'Spain').length === 0));
+  T('Road warnings', 'Lithium 120 Wh → over the 100 Wh limit (SP 188)', () => { const w = rw('Laptop battery 120Wh')[0]; return expect(w && w.title === 'Over the road limit' && /100 Wh/.test(w.text), w && w.text); });
+  T('Road warnings', 'Power bank 10,000 mAh → about 37 Wh, asks for the Wh on the case', () => { const w = rw('Power bank 10,000mAh')[0]; return expect(w && /37 Wh/.test(w.text) && /single-cell/.test(w.text), w && w.text); });
+  T('Road warnings', 'Aerosol 1.5 L → over the 1 L LQ limit', () => { const w = rw('Aerosol paint 1.5L')[0]; return expect(w && w.title === 'Over the road limit', w && w.text); });
+  T('Road warnings', 'Aerosol 50 ml → not subject (SP 190)', () => { const w = rw('Travel hairspray 50ml aerosol')[0]; return expect(w && /special provision 190/.test(w.text), w && w.text); });
+  T('Road warnings', 'Aerosol cartons: 200 × 0.2 kg = 40 kg → over the 30 kg LQ package limit', () => { const w = rw('Aerosol deodorant 150ml', 'Germany', { upc: 200, uw: 0.2 })[0]; return expect(w && /over the 30 kg/.test(w.text), w && w.text); });
+  T('Road warnings', 'Vodka 40% → not subject by road (SP 145), R-06 still asks to confirm', () => { const w = rw('Vodka 40% 70cl').find(x => x.kind === 'limit'); return expect(w && /special provision 145/.test(w.text) && /R-06/.test(w.text), w && w.text); });
+  T('Road warnings', 'Spirit 75% → regulated, 5 L per bottle as LQ', () => { const w = rw('Overproof rum 75% 70cl').find(x => x.kind === 'limit'); return expect(w && /over 70%/.test(w.text), w && w.text); });
+  T('Road warnings', 'Perfume 6 L → over the 5 L LQ limit', () => { const w = rw('Perfume refill 6L')[0]; return expect(w && w.title === 'Over the road limit', w && w.text); });
+  T('Road warnings', 'Lighter refills → no LQ route (UN 1057)', () => { const w = rw('Lighter refills butane')[0]; return expect(w && /cannot travel as a limited quantity/.test(w.text), w && w.text); });
+  T('Road warnings', 'Parsers: 70cl → 700 ml, 1,5 L → 1500 ml, 10.000mAh → 10000, 99.5Wh → 99.5', () => expect(PF.parseVolumeMl('70cl') === 700 && PF.parseVolumeMl('1,5 L') === 1500 && PF.parseMah('10.000mAh') === 10000 && PF.parseWh('99.5Wh') === 99.5));
+  T('Road warnings', 'Warnings never change the status', () => { const e = ev(b => { b.items[0].description = 'Beef jerky 100g'; }); return expect(e.status === 'Green' && e.warnings.length === 1, `${e.status} ${e.warnings.length}`); });
+
   // ---------- File parsing ----------
   const H1 = ['Booking ID', 'Seller name', 'Origin city', 'Origin country', 'Destination city', 'Destination country', 'Destination type', 'Ready to ship date', 'Seller priority', 'Pallets', 'Cartons', 'Total declared value', 'Currency', 'Total gross weight (kg)', 'Delivery appointment booked'];
   const H2 = ['Booking ID', 'SKU', 'Description', 'HS code', 'Quantity (units)', 'Unit price', 'Units per carton', 'Cartons', 'Unit weight (kg)', 'Country of origin'];
@@ -2707,7 +2954,7 @@ function carrierCards(ev, ctx) {
   return h('section', { class: 'carriers' }, seg, cards, why, h('p', { class: 'note' }, PRICE_TXT));
 }
 function reportEl(ev, ctx) {
-  const { b, checks, dataIssues, advisories, status, rec, eta } = ev;
+  const { b, checks, dataIssues, advisories, warnings = [], status, rec, eta } = ev;
   const fails = checks.filter(c => c.status === 'fail' || c.status === 'check');
   const issues = [
     ...dataIssues.map(d => ({ kind: 'data', sev: d.sev, title: d.field, detail: d.text, fix: d.fix })),
@@ -2749,6 +2996,8 @@ function reportEl(ev, ctx) {
   const adv = advisories.length ? h('section', { class: 'advisories' }, h('div', { class: 'sec-h' }, h('h3', null, 'Good to know'), h('span', { class: 'muted' }, 'doesn’t block your booking')), h('div', { class: 'advlist' }, advisories.map(a => h('div', { class: 'advcard' }, h('span', { class: 'adv-tag' }, advKind(dgPlain(a) ? [dgPlain(a), h('details', { class: 'why' }, h('summary', null, 'Why'), h('p', null, a))] : a)), h('div', null, a)))),
     advActs.length ? h('div', { class: 'fix-acts' }, advActs.map(a => h('button', { class: 'btn small', type: 'button', onclick: () => ctx.apply(a) }, a.label))) : null) : null;
 
+  const warnEl = warningsEl(warnings);
+
   const carrierEl = rec ? carrierCards(ev, ctx) : null;
 
   const conf = PF.confirmation(ev, ctx.reviewedCount ? ctx.reviewedCount(ev) : 0);
@@ -2775,7 +3024,7 @@ function reportEl(ev, ctx) {
   const carrierFold = rec ? fold(carrierEl, `Choose your carrier · ${rec.chosen.carrier} · ${PF.gbp(rec.chosen.cost)} · ${rec.chosen.transit} days${rec.chosen.fits === false ? ' · too heavy' : ''}`) : null;
   const confFold = fold(confEl, status === 'Red' ? 'Ready to book? · after the must-fix items are cleared' : 'Ready to book? · summary and next steps');
   const fixHead = issues.length ? h('div', { class: 'sec-h' }, h('h3', null, 'Things to fix'), h('div', { class: 'tally' }, h('span', null, 'Must fix ', h('b', null, String(nRed))), h('span', null, 'Check ', h('b', null, String(nAmb))))) : null;
-  return h('div', { class: 'report' }, head, reviewEl(ev, ctx), fixHead, issueList, passedEl, adv, carrierFold, confFold, inv, ctx.mode === 'file' ? stamp : null, hist);
+  return h('div', { class: 'report' }, head, reviewEl(ev, ctx), fixHead, issueList, passedEl, warnEl, adv, carrierFold, confFold, inv, ctx.mode === 'file' ? stamp : null, hist);
 }
 
 function planEl(ev, ctx) {
@@ -2869,10 +3118,23 @@ function send(text) {
   if (chips) b.append(chipsEl(chips, 'live'));
   renderSheet();
 }
+// Road-freight warnings (bans, permits, ADR limits): advisory only, shown with a small ⚠.
+const warnIcon = () => h('span', { class: 'warn-ico', role: 'img', 'aria-label': 'Warning' }, '⚠');
+function warningsEl(warnings) {
+  if (!warnings.length) return null;
+  return h('section', { class: 'warnings' },
+    h('div', { class: 'sec-h' }, h('h3', null, warnIcon(), ' Road-freight warnings'), h('span', { class: 'muted' }, 'doesn’t block your booking — check before you ship')),
+    h('div', { class: 'warnlist' }, warnings.map(w => h('div', { class: 'warncard k-' + w.kind },
+      h('span', { class: 'warn-tag' }, warnIcon(), ' ', w.title),
+      h('p', null, w.text),
+      h('p', { class: 'warn-fix' }, h('b', null, 'What to do: '), w.fix),
+      h('p', { class: 'warn-ref' }, w.ref)))));
+}
 function miniVerdict(ev, priceNote) {
   const n = [ev.reds ? `${ev.reds} must fix` : null, ev.ambers ? `${ev.ambers} to check` : null].filter(Boolean).join(' · ') || 'nothing to fix';
   return h('div', { class: 'mini v-' + ev.status },
     h('p', null, h('span', { class: 'ministamp' }, STAMP[ev.status]), ' ', `All checked — ${n}.`),
+    ev.warnings && ev.warnings.length ? h('p', { class: 'mini-warn' }, warnIcon(), ` ${ev.warnings.length} road-freight warning${ev.warnings.length === 1 ? '' : 's'} — ${[...new Set(ev.warnings.map(w => w.title))].join(' · ')}.`) : null,
     h('p', { class: 'muted' }, 'Your full check is in the booking sheet.'),
     ev.rec && priceNote ? h('p', { class: 'note' }, PRICE_TXT) : null,
     h('button', { class: 'linkbtn only-narrow', type: 'button', onclick: () => $('#sheet').scrollIntoView({ behavior: 'smooth' }) }, 'See your check ↓'));
@@ -3157,7 +3419,7 @@ function renderFile() {
   const exp = fileData.expected;
   { const openR = rows.find(r2 => r2.i === openRow); setHero('file', openR ? openR.ev : null, openR ? openR.ev.b.id : ''); }
   const tbody = h('tbody');
-  rows.filter(r => filter === 'All' || (filter === 'Review' ? toReview(r) > 0 : filter === 'Advisory' ? r.ev.advisories.length > 0 : r.ev.status === filter)).forEach(r => {
+  rows.filter(r => filter === 'All' || (filter === 'Review' ? toReview(r) > 0 : filter === 'Advisory' ? r.ev.advisories.length + r.ev.warnings.length > 0 : r.ev.status === filter)).forEach(r => {
     const { ev } = r; const b = ev.b;
     const flagged = [...ev.checks.filter(c => c.status === 'fail' || c.status === 'check').map(c => ({ t: PLAIN[c.id] || c.id, s: c.status === 'check' ? 'Amber' : c.sev })), ...(ev.dataIssues.length ? [{ t: `Booking details ×${ev.dataIssues.length}`, s: ev.dataIssues.some(d => d.sev === 'Red') ? 'Red' : 'Amber' }] : [])];
     const e = exp && exp[b.id.toUpperCase()];
@@ -3167,7 +3429,7 @@ function renderFile() {
       h('td', null, b.seller || '—'),
       h('td', null, `${b.originCity || '?'} → ${b.destCity || '?'}`),
       h('td', null, h('span', { class: 'pill p-' + ev.status }, ({ Red: 'Must fix', Amber: 'Check', Green: 'Ready' })[ev.status])),
-      h('td', null, flagged.length ? flagged.map(f => h('span', { class: 'rchip s-' + f.s }, f.t)) : h('span', { class: 'muted' }, 'none'), ev.advisories.length ? h('span', { class: 'rchip s-Adv', title: 'Doesn’t block the booking' }, 'Good to know') : null),
+      h('td', null, flagged.length ? flagged.map(f => h('span', { class: 'rchip s-' + f.s }, f.t)) : h('span', { class: 'muted' }, 'none'), ev.warnings.length ? h('span', { class: 'rchip s-Warn', title: ev.warnings.map(w => `${w.title}: ${w.sku}`).join('\n') }, warnIcon(), ` ${ev.warnings.length}`) : null, ev.advisories.length ? h('span', { class: 'rchip s-Adv', title: 'Doesn’t block the booking' }, 'Good to know') : null),
       h('td', null, !ev.rec ? '—' : ev.rec.chosen.fits === false && ev.rec.fixes.length ? h('span', null, h('s', { class: 'muted' }, ev.rec.chosen.carrier), ' → ', `${ev.rec.fixes[0].carrier}${ev.rec.fixes[0].type === 'repack' ? ` on ${ev.rec.fixes[0].pallets} plt` : ''} · ${PF.gbp(ev.rec.fixes[0].cost)}`) : `${ev.rec.chosen.carrier} · ${PF.gbp(ev.rec.chosen.cost)}`),
       h('td', { class: 'num' }, toReview(r) || ''),
       exp ? h('td', null, e ? h('span', { class: String(e.status).toLowerCase() === ev.status.toLowerCase() ? 'match' : 'mismatch', title: e.rules || '' }, String(e.status).toLowerCase() === ev.status.toLowerCase() ? `✓ ${e.status}` : `✕ expected ${e.status}`) : '—') : null);
@@ -3197,6 +3459,7 @@ async function exportResults() {
     sum[sum.length - 1].push(toReview(rows[ri]) || '');
     ev.dataIssues.forEach(d => iss.push([b.id, d.sev, 'Data: ' + d.field, d.text, d.fix || '']));
     flags.forEach(c => iss.push([b.id, c.status === 'check' ? 'Amber' : c.sev, `${c.id} ${c.rule}`, c.detail, c.fix || '']));
+    (ev.warnings || []).forEach(w => iss.push([b.id, 'Warning', w.title, w.text, `${w.fix} (${w.ref})`]));
   });
   const wb = XLSX.utils.book_new();
   const s1 = XLSX.utils.aoa_to_sheet(sum); s1['!cols'] = [10, 22, 24, 12, 8, 9, 10, 22, 26, 10, 10, 12, 12, 10, 10].map(w => ({ wch: w }));
