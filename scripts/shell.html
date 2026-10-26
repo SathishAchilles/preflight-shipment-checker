@@ -533,6 +533,62 @@ footer { max-width: 1320px; margin: 0 auto; padding: 0 24px 40px; color: var(--d
   .bar { padding: 8px 8px 8px 14px; }
 }
 
+/* ---- Match the approved preview ---- */
+.bar { gap: 16px; }
+.bar .links { flex: 1; justify-content: center; gap: 22px; }
+.bar .links button { padding: 6px 0; border-radius: 0; background: none !important; color: var(--muted); font-weight: 400; box-shadow: none; }
+.bar .links button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 -2px 0 var(--route); }
+.bar .cta { padding: 9px 18px; }
+.brand h1 { font-size: clamp(38px, 5.2vw, 70px); line-height: 1.02; }
+.brand .lede { margin: 18px 0 24px; color: var(--muted); font-size: 16.5px; max-width: 42ch; display: block; }
+.cta-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.brand .lanes { margin-top: 24px; }
+.hcheck .live-l { font: 11px var(--mono); color: var(--route); }
+#chat-report { margin-top: 8px; }
+#chat-report:empty { display: none; }
+/* section header: eyebrow + hairline + aside */
+.sec { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 30px 0 14px; }
+.sec .eyebrow { flex: none; }
+.sec .rule { flex: 1; height: 1px; background: var(--line); min-width: 40px; }
+.sec .aside { font: 12px var(--mono); color: var(--muted); }
+.sec.adv .eyebrow { color: var(--adv); }
+.report .verdict { margin-top: 4px; }
+/* fix cards */
+.issue { padding: 20px; display: flex; flex-direction: column; gap: 6px; }
+.report .issues { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 760px) { .report .issues { grid-template-columns: 1fr; } }
+.issue .top2 { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+.issue .top2 .item { font: 12px var(--mono); color: var(--dim); text-align: right; }
+.issue h4 { font-size: 17.5px; font-weight: 500; letter-spacing: -.01em; margin: 0; }
+.issue .body { color: var(--muted); font-size: 14.5px; margin: 0; }
+.issue .foot { display: flex; justify-content: space-between; align-items: center; gap: 10px 12px; flex-wrap: wrap; margin-top: auto; padding-top: 12px; }
+.issue .foot small { font: 11.5px var(--mono); color: var(--muted); flex: 1 1 180px; }
+.issue .foot .acts { display: flex; gap: 6px; flex-wrap: wrap; }
+.okline { color: var(--muted); font-size: 14.5px; margin: 12px 0 0; }
+.okline b { color: var(--green); font-weight: 500; }
+.advisories .advlist { grid-template-columns: 1fr; max-width: 760px; }
+/* carriers: centred toggle and explanation, ranked cards */
+.carriers .seg { margin: 0 auto 22px; }
+.ccard .rk { font: 12px var(--mono); color: var(--dim); }
+.ccard h4 { margin-top: 4px; }
+.why-line { text-align: center; margin: 22px auto 0; max-width: 68ch; }
+.carriers .note.disc { text-align: center; font: 11.5px var(--mono); color: var(--dim); margin-top: 10px; }
+/* ready to book card */
+.confcard2 { padding: 20px 22px; border-radius: 18px; background: var(--glass); border: 1px solid var(--line); }
+.confcard2 .ch { font-weight: 500; }
+.confcard2 p { color: var(--muted); margin: 6px 0 0; }
+.confcard2 .warnline { color: var(--amber); }
+.confcard2 .nx { font: 11.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 16px 0 6px; }
+.confcard2 ol { padding-left: 20px; color: var(--muted); font-size: 14.5px; display: grid; gap: 4px; margin: 0; }
+.histcard { margin-top: 14px; padding: 4px 16px; border-radius: 16px; background: var(--glass); border: 1px solid var(--line); }
+@media (max-width: 980px) { .bar .links { justify-content: flex-start; } }
+@media (max-width: 620px) {
+  .bar .cta { display: none; }
+  .bar .links { gap: 14px; }
+  .brand h1 { font-size: 34px; }
+  .brand .lede { font-size: 15px; }
+}
+
 /* Mobile sticky summary (chat booking) */
 .mbar { display: none; }
 @media (max-width: 980px) {
@@ -588,13 +644,15 @@ footer { max-width: 1320px; margin: 0 auto; padding: 0 24px 40px; color: var(--d
         <button id="tab-file" role="tab" aria-controls="panel-file">Check a file</button>
         <button id="tab-rules" role="tab" aria-controls="panel-rules">How it works</button>
       </nav>
+      <button class="btn cta" type="button" data-go="chat"><span>Start a booking</span> →</button>
     </div>
     <div class="brand">
       <div>
         <div class="eyebrow">UK → Germany · France · Netherlands</div>
         <h1>Clear the route <span>before</span> the truck rolls.</h1>
-        <p>Tell us about your shipment or drop in your booking sheet. We check it straight away, show you how to fix anything that's wrong, and find the right carrier.</p>
-        <div class="lanes"><span>3 destinations</span><span>3 carriers</span><span>4 collection cities</span></div>
+        <p class="lede">Preflight checks every booking against ten freight rules while you type, catches what customs and carriers would reject, and suggests the best carrier for your priority.</p>
+        <div class="cta-row"><button class="btn" type="button" data-go="chat">Book by chat →</button><button class="btn ghost" type="button" data-go="file">Upload a sheet ↑</button></div>
+        <div class="lanes"><span>3 destinations</span><span>3 carriers</span><span>4 origin hubs</span></div>
       </div>
       <div id="hero-map" class="hmap" aria-live="polite"></div>
     </div>
@@ -614,6 +672,7 @@ footer { max-width: 1320px; margin: 0 auto; padding: 0 24px 40px; color: var(--d
       </div>
       <div id="sheet" class="sheet" aria-live="polite"></div>
     </div>
+    <div id="chat-report" aria-live="polite"></div>
   </section>
 
   <section id="panel-file" role="tabpanel" aria-labelledby="tab-file" hidden>

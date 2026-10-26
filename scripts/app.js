@@ -55,8 +55,8 @@ function reviewEl(ev, ctx) {
     td.append(h('span', { class: 'rv-edit' }, inp, ' ', h('button', { class: 'btn tiny', type: 'button', onclick: save }, 'Save'), ' ', h('button', { class: 'linkbtn', type: 'button', onclick: () => R.redraw() }, 'Cancel')));
     inp.focus(); inp.select();
   };
-  return h('section', { class: 'review' },
-    h('div', { class: 'review-head' }, h('h3', null, 'We tidied a few values'),
+  return [secH('We tidied a few values', open.length ? `${open.length} to check` : 'all checked'), h('section', { class: 'review' },
+    h('div', { class: 'review-head' }, h('h3', null, 'Do these look right?'),
       open.length ? h('button', { class: 'btn small', type: 'button', onclick: () => R.acceptAll(open) }, 'Accept all') : null),
     h('p', { class: 'note' }, 'Some values were written differently, so we read them like this. Tap Accept if they look right. This never blocks your booking.'),
     h('div', { class: 'tablewrap' }, h('table', { class: 'ctable rvtable' },
@@ -65,7 +65,7 @@ function reviewEl(ev, ctx) {
         h('th', { scope: 'row' }, c.sku ? `${c.label} (${c.sku})` : c.label), h('td', null, shown(c.entered)), h('td', null, c.used), h('td', null, c.why),
         h('td', null, st ? h('span', { class: st.state === 'accepted' ? 'rv-ok' : 'rv-ch' }, st.state === 'accepted' ? '✓ Accepted' : `✎ Changed by you: ${st.value}`)
           : h('span', null, h('button', { class: 'btn tiny', type: 'button', onclick: () => R.accept(c) }, 'Accept'), ' ', h('button', { class: 'btn tiny ghost', type: 'button', onclick: editCell(c) }, 'Change')))); })))),
-    h('p', { class: 'muted' }, open.length ? `${open.length} to check` : 'All checked'));
+    null)];
 }
 try { if (window.claude && typeof window.claude.use === 'function') window.claude.use('downloads').then(d => { DL = d; }).catch(() => {}); } catch (e) {}
 async function saveFile(name, buf) {
@@ -85,7 +85,7 @@ function renderMbar(ev) {
   const c = ev.rec && ev.rec.chosen;
   m.append(h('span', { class: 'ministamp v-' + ev.status }, STAMP[ev.status]),
     h('span', { class: 'grow' }, [ev.reds ? `${ev.reds} must-fix` : null, ev.ambers ? `${ev.ambers} to check` : null].filter(Boolean).join(' · ') || 'No problems', c ? ' · ' : '', c ? h('b', null, `${c.carrier} ${PF.gbp(c.cost)}`) : null),
-    h('button', { class: 'btn small', type: 'button', onclick: () => { const r = $('#sheet .report') || $('#sheet'); r.scrollIntoView({ behavior: 'smooth' }); } }, 'Report ↓'));
+    h('button', { class: 'btn small', type: 'button', onclick: () => { const r = $('#chat-report .report') || $('#sheet'); r.scrollIntoView({ behavior: 'smooth' }); } }, 'Report ↓'));
 }
 function showTab(t) {
   if (!TABS.includes(t)) t = 'chat';
@@ -96,6 +96,7 @@ function showTab(t) {
   try { if (location.hash.slice(1) !== t) history.replaceState(null, '', '#' + t); } catch (e) {}
 }
 TABS.forEach(t => { const tb = $('#tab-' + t); if (tb) tb.addEventListener('click', () => showTab(t)); });
+document.querySelectorAll('[data-go]').forEach(el => el.addEventListener('click', () => { showTab(el.dataset.go); const tgt = el.dataset.go === 'chat' ? $('#chat-input') : $('#drop'); if (tgt) { tgt.scrollIntoView({ behavior: 'smooth', block: 'center' }); if (el.dataset.go === 'chat') setTimeout(() => tgt.focus(), 300); } }));
 window.addEventListener('hashchange', () => showTab(location.hash.slice(1)));
 
 
@@ -158,7 +159,7 @@ function renderHero(x) {
   }
   const card = h('div', { class: 'hcheck' },
     h('div', { class: 'hd' }, h('b', { style: 'font-weight:500' }, ev ? `${x.label}${PF.isNum(b.pallets) ? ` · ${PF.fmtNum(b.pallets)} pallet${b.pallets === 1 ? '' : 's'}` : ''}` : 'Your booking'),
-      ev ? h('span', { class: 'ministamp v-' + ev.status }, STAMP[ev.status]) : h('span', { class: 'mono muted' }, 'waiting')),
+      ev ? h('span', null, h('span', { class: 'live-l' }, 'live'), ' ', h('span', { class: 'ministamp v-' + ev.status }, STAMP[ev.status])) : h('span', { class: 'mono muted' }, 'waiting')),
     h('div', { class: 'ring' }, h('div', { html: `<svg viewBox="0 0 56 56" aria-hidden="true"><circle class="bgc" cx="28" cy="28" r="24"/><circle class="fg" cx="28" cy="28" r="24" style="stroke-dashoffset:${(150.8 * (1 - passed / 10)).toFixed(1)}"/></svg>` }),
       h('div', null, h('b', { class: 'num' }, `${passed} / 10`), h('span', null, 'checks passed'))),
     chips.length ? h('div', { class: 'hchips' }, chips) : null,
@@ -240,17 +241,72 @@ function brief(it, ev) {
   }
 }
 
+
+// Section header in the Night Route style: eyebrow, hairline, optional aside on the right.
+function secH(label, aside, cls = '') { return h('div', { class: 'sec ' + cls }, h('span', { class: 'eyebrow' }, label), h('span', { class: 'rule' }), aside ? (aside.nodeType ? aside : h('span', { class: 'aside' }, aside)) : null); }
+const failingIds = ev => new Set([...ev.checks.filter(c => c.status === 'fail' || c.status === 'check').map(c => c.id), ...ev.dataIssues.map(d => 'data:' + d.field)]);
+
+// Plain sentences for the most common checks (the card's body and the hint next to its button).
+function plainCard(it, ev) {
+  const c = it.check; if (!c) return null;
+  const b = ev.b, items = (c.items || []).map(sku => b.items.find(x => x.sku === sku)).filter(Boolean), one = items[0];
+  const name = x => (x.description || x.sku).toLowerCase();
+  switch (c.id) {
+    case 'R-01': {
+      const sug = one && ((one.hsRec || [])[0] ? one.hsRec[0].code : one.hsSug && one.hsSug.level === 'hs6' ? one.hsSug.codes[0] : null);
+      const body = items.length > 1 ? `Customs needs a code with at least 6 digits for every item. ${items.length} items need one.`
+        : one && one.hs.blank ? `Customs needs a code for every item.${sug ? ` From the name, ${name(one)} are usually ${sug}.` : ''}`
+        : `Customs needs at least 6 digits.${sug ? ` It was probably ${sug}.` : ''}`;
+      return { body, hint: sug ? 'Suggested · please double-check' : 'Look it up on the UK Trade Tariff' };
+    }
+    case 'R-05': { const r = ev.rec; if (!r) return null; const sw = r.fixes.find(f => f.type === 'switch'), o = sw && r.opts.find(x => x.carrier === sw.carrier);
+      return { body: `Each pallet weighs ${PF.kg(r.wpp)}, but ${r.chosen.carrier} takes ${r.chosen.maxW} kg at most.`, hint: sw ? `${sw.carrier} takes it · ${PF.gbp(sw.cost)}${o ? ` · ${o.transit} days` : ''}` : 'Use more pallets' }; }
+    case 'R-06': return c.status === 'check'
+      ? { body: `${items.length === 1 ? one.description : 'Some items'} may contain lithium batteries, sprays or flammable liquids. Please check and confirm.`, hint: 'Add “battery-free” or “non-aerosol” if that’s right' }
+      : { body: `${items.length === 1 ? one.description : 'Some items'} can’t travel on these road services — they don’t carry dangerous goods.`, hint: 'Remove it from this shipment' };
+    case 'R-08': return { body: 'Warehouses turn away trucks without a booked time slot.', hint: ev.eta ? `Arrives ${PF.fmtDateLong(ev.eta.arrive).replace(/ \d{4}$/, '')}` : '' };
+    default: return null;
+  }
+}
+function issueTitle(it, ev) {
+  const c = it.check;
+  if (!c) return `${it.title} needs fixing`;
+  const bad = (c.items || []).map(sku => ev.b.items.find(x => x.sku === sku)).filter(Boolean);
+  switch (c.id) {
+    case 'R-01': return bad.length === 1 && !bad[0].hs.blank ? 'Customs code too short' : 'Customs code missing';
+    case 'R-02': return 'Total value doesn’t match the items';
+    case 'R-03': return 'Boxes don’t add up';
+    case 'R-04': return 'Box total doesn’t match the items';
+    case 'R-05': return ev.rec ? `Too heavy for ${ev.rec.chosen.carrier}` : 'Pallets too heavy';
+    case 'R-06': return c.status === 'check' ? 'Might be dangerous goods' : 'Dangerous goods can’t go on this truck';
+    case 'R-07': return 'Total weight looks too low';
+    case 'R-08': return 'No delivery slot booked';
+    case 'R-09': return 'Missing where it was made';
+    case 'R-10': return 'Ready date is in the past';
+    default: return PLAIN[c.id] || c.rule;
+  }
+}
+function issueItem(it, ev) {
+  const c = it.check;
+  if (!c) return it.title;
+  const skus = c.items || [];
+  if (skus.length === 1) { const x = ev.b.items.find(i2 => i2.sku === skus[0]); return x ? words(x.description || x.sku, 3) : skus[0]; }
+  if (skus.length > 1) return `${skus.length} items`;
+  return PLAIN[c.id] || c.id;
+}
 function carrierCards(ev, ctx) {
   const rec = ev.rec, b = ev.b, c = rec.chosen;
   const WHY = { Cheapest: 'the lowest price', Fastest: 'the quickest delivery', 'Most reliable': 'the best on-time record', Balanced: 'a good mix of price and speed' };
   const seg = h('div', { class: 'seg', role: 'group', 'aria-label': 'What matters most' }, PF.PRIORITIES.map(p => h('button', { type: 'button', 'aria-pressed': String(rec.priority === p && !rec.overridden), onclick: () => ctx.apply({ patch: { priority: p, carrierOverride: null }, say: `${p.toLowerCase()} please` }) }, p)));
-  const cards = h('div', { class: 'ccards' }, rec.opts.map(o => {
+  const by = { Cheapest: (x, y) => x.cost - y.cost || x.transit - y.transit, Fastest: (x, y) => x.transit - y.transit || y.onTime - x.onTime, 'Most reliable': (x, y) => y.onTime - x.onTime || x.transit - y.transit };
+  const ranked = [...rec.opts].sort(by[rec.priority] || ((x, y) => (x.carrier === rec.priorityPick.carrier ? -1 : y.carrier === rec.priorityPick.carrier ? 1 : x.cost - y.cost)));
+  const cards = h('div', { class: 'ccards' }, ranked.map((o, rank) => {
     const isC = o.carrier === c.carrier, best = o.carrier === rec.priorityPick.carrier;
     const need = rec.wpp != null && o.fits === false && PF.isNum(b.gross) ? Math.ceil(b.gross / o.maxW - 1e-9) : null;
     const pct = rec.wpp != null ? Math.min(100, Math.round(rec.wpp / o.maxW * 100)) : 0;
     return h('div', { class: 'ccard' + (isC ? ' chosen' : '') },
       isC && rec.overridden ? h('span', { class: 'badge' }, 'Your choice') : best ? h('span', { class: 'badge' }, 'Best for you') : null,
-      h('h4', null, o.carrier), h('span', { class: 'svc' }, o.service),
+      h('span', { class: 'rk' }, `#${rank + 1}`), h('h4', null, o.carrier), h('span', { class: 'svc' }, o.service),
       h('dl', null, h('div', null, h('dt', null, 'Cost'), h('dd', null, PF.gbp(o.cost))), h('div', null, h('dt', null, 'Days'), h('dd', null, String(o.transit))), h('div', null, h('dt', null, 'On time'), h('dd', null, o.onTime + '%'))),
       rec.wpp != null ? h('div', { class: 'meter' + (o.fits === false ? ' no' : '') }, h('i', { style: `width:${pct}%` })) : null,
       rec.wpp != null ? h('p', { class: 'fit ' + (o.fits === false ? 'no' : 'ok') }, o.fits === false ? `✕ Too heavy · max ${o.maxW} kg a pallet` : `✓ Fits · ${Math.round(rec.wpp)} of ${o.maxW} kg a pallet`) : null,
@@ -261,7 +317,7 @@ function carrierCards(ev, ctx) {
   const why = h('p', { class: 'why-line' },
     rec.overridden ? [`You chose `, h('b', null, c.carrier), '. ', h('button', { class: 'linkbtn', type: 'button', onclick: () => ctx.apply({ patch: { carrierOverride: null }, say: 'use the recommended carrier' }) }, 'Use the best match instead')]
       : ['You asked for ', h('b', null, WHY[rec.priority] || rec.priority), '. ', c.fits === false ? `${c.carrier} is the best match, but your pallets are too heavy for it. Pick another carrier or use more pallets.` : `${c.carrier} is the best match${c.fits ? ' and your pallets fit' : ''}.`]);
-  return h('section', { class: 'carriers' }, seg, cards, why, h('p', { class: 'note' }, PRICE_TXT));
+  return h('section', { class: 'carriers' }, seg, cards, why, h('p', { class: 'note disc' }, PRICE_TXT));
 }
 function reportEl(ev, ctx) {
   const { b, checks, dataIssues, advisories, warnings = [], status, rec, eta } = ev;
@@ -283,27 +339,29 @@ function reportEl(ev, ctx) {
         `${checks.filter(c => c.status === 'pass' || c.status === 'na').length} of 10 checks passed`,
       ].filter(Boolean).join(' · '))));
 
-  const issueList = issues.length ? h('ol', { class: 'issues', 'aria-label': 'Issues' }, issues.map(it => {
+  const issueList = issues.length ? h('ol', { class: 'issues', 'aria-label': 'Things to fix' }, issues.map(it => {
     const acts = it.check ? fixActions(it.check, ev, ctx.mode) : [], br = brief(it, ev);
+    const pc = plainCard(it, ev);
+    const bodyTxt = pc ? [pc.body] : [br.head, ...(br.lines || [])].filter(x => typeof x === 'string');
+    const nodeLines = pc ? [] : (br.lines || []).filter(x => typeof x !== 'string');
+    const hint = pc ? pc.hint : br.line || (!acts.length && it.fix ? words(firstPart(it.fix), 14) : '');
     return h('li', { class: 'issue s-' + it.sev },
-      h('div', { class: 'issue-top' }, h('span', { class: 'sev' }, SEV_WORD[it.sev]), h('span', { class: 'rid', title: it.title }, (it.id && PLAIN[it.id]) || it.title)),
-      h('p', { class: 'what', title: it.detail }, br.head),
-      ...(br.lines || (br.line ? [br.line] : [])).map(l => h('p', { class: 'evid' }, l)),
-      // With no button, the first step of the fix stays visible so the reviewer still knows what to do.
-      !acts.length && it.fix ? h('p', { class: 'fix' }, words(firstPart(it.fix), 14)) : null,
-      acts.length ? h('div', { class: 'fix-acts' }, acts.map((a, k) => h('button', { class: 'btn small' + (k ? ' ghost' : ''), type: 'button', onclick: () => ctx.apply(a) }, a.label))) : null,
-      h('details', { class: 'why' }, h('summary', null, 'Why'),
-        it.kind === 'rule' ? h('p', { class: 'rtitle' }, `${it.id}: ${it.title}`) : null,
-        h('p', null, it.detail), it.fix ? h('p', null, h('b', null, 'How to fix: '), it.fix) : null));
-  })) : h('p', { class: 'allclear' }, 'No problems found — every rulebook check passed.');
+      h('div', { class: 'top2' }, h('span', { class: 'sev' }, SEV_WORD[it.sev]), h('span', { class: 'item' }, issueItem(it, ev))),
+      h('h4', null, issueTitle(it, ev)),
+      h('p', { class: 'body' }, bodyTxt.join('. ').replace(/\.\./g, '.')),
+      ...nodeLines.map(n => h('p', { class: 'body' }, n)),
+      h('div', { class: 'foot' }, h('small', null, hint || ''), acts.length ? h('span', { class: 'acts' }, acts.map((x, k) => h('button', { class: 'btn small' + (k ? ' ghost' : ''), type: 'button', onclick: () => ctx.apply(x) }, x.label))) : null));
+  })) : null;
 
-  const passedEl = h('details', { class: 'passed' }, h('summary', null, `✓ ${issues.length ? '' : 'All '}${passed.length}${issues.length ? ' other' : ''} check${passed.length === 1 ? '' : 's'} look${passed.length === 1 ? 's' : ''} good${cannot.length ? ` · ${cannot.length} couldn't run yet` : ''}`),
-    h('ul', null, [...passed, ...cannot].map(c => h('li', { class: 'p-' + c.status }, h('span', { class: 'rid' }, PLAIN[c.id] || c.id), ' ', c.status === 'cannot' ? h('i', null, 'Couldn’t run: ') : c.status === 'na' ? h('i', null, 'Not applicable: ') : null, c.detail))));
+  const okNames = passed.map(c => (PLAIN[c.id] || c.id).toLowerCase());
+  const passedEl = issues.length
+    ? h('p', { class: 'okline' }, h('b', null, '✓ '), `Everything else looks good: ${okNames.slice(0, -1).join(', ')}${okNames.length > 1 ? ' and ' : ''}${okNames.slice(-1)}.`, cannot.length ? ` ${cannot.length} check${cannot.length === 1 ? '' : 's'} couldn’t run yet.` : '')
+    : h('p', { class: 'okline' }, h('b', null, '✓ '), `All ${passed.length} checks look good.`, cannot.length ? ` ${cannot.length} couldn’t run yet.` : '');
 
   const advActs = hsAdvActs(ev);
   // Dangerous-goods advisories in plain words (the engine text stays under "Why").
   const dgPlain = txt => { const m = /— (\S+) \(“([^”]*)”\) may be ADR class [^ ]+ ([^(]+?) \(matched/.exec(txt); if (!m) return null; const it2 = b.items.find(x => x.sku === m[1]); const adr = it2 ? (PF.scanDG(`${it2.description} ${it2.sku}`).adr[0] || {}) : {}; return `${m[2]} may count as dangerous goods on the road (${m[3].trim()}). ${adr.ok || ''} Otherwise ask your supplier for the safety data sheet, or check with the carrier.`; };
-  const adv = advisories.length ? h('section', { class: 'advisories' }, h('div', { class: 'sec-h' }, h('h3', null, 'Good to know'), h('span', { class: 'muted' }, 'doesn’t block your booking')), h('div', { class: 'advlist' }, advisories.map(a => h('div', { class: 'advcard' }, h('span', { class: 'adv-tag' }, advKind(dgPlain(a) ? [dgPlain(a), h('details', { class: 'why' }, h('summary', null, 'Why'), h('p', null, a))] : a)), h('div', null, a)))),
+  const adv = advisories.length ? h('section', { class: 'advisories' }, secH('Good to know', 'doesn’t block your booking', 'adv'), h('div', { class: 'advlist' }, advisories.map(a => h('div', { class: 'advcard' }, h('span', { class: 'adv-tag' }, advKind(dgPlain(a) ? [dgPlain(a), h('details', { class: 'why' }, h('summary', null, 'Why'), h('p', null, a))] : a)), h('div', null, a)))),
     advActs.length ? h('div', { class: 'fix-acts' }, advActs.map(a => h('button', { class: 'btn small', type: 'button', onclick: () => ctx.apply(a) }, a.label))) : null) : null;
 
   const warnEl = warningsEl(warnings);
@@ -311,14 +369,14 @@ function reportEl(ev, ctx) {
   const carrierEl = rec ? carrierCards(ev, ctx) : null;
 
   const conf = PF.confirmation(ev, ctx.reviewedCount ? ctx.reviewedCount(ev) : 0);
-  const confEl = conf ? h('section', { class: 'confirm' },
-    h('h3', null, 'Ready to book?'),
-    h('p', { class: 'conf-head s-' + status }, conf.head),
-    conf.lines.map(l => h('p', null, l)),
-    eta && (eta.movedCollect || eta.movedArrive || eta.fromToday || eta.bufferDays) ? h('p', { class: 'note' }, [eta.bufferDays ? `No warehouse appointment yet, so ${eta.bufferDays} days are added to the delivery estimate to book a slot.` : null, eta.fromToday ? 'Ready date is in the past, so timing is counted from today.' : null, eta.movedCollect ? 'Collection moved to the next working day.' : null, eta.movedArrive ? 'Arrival moved to the next working day (no weekend deliveries).' : null].filter(Boolean).join(' ')) : null,
-    h('p', { class: 'note' }, `Dates checked against today, ${PF.fmtDate(ev.today)} (this device’s date).`),
-    h('h4', null, 'What happens next'),
-    h('ol', { class: 'next' }, conf.next.map(n => h('li', null, n)))) : null;
+  const unrev = conf ? conf.lines.find(l => /not yet reviewed/.test(l)) : null;
+  const confEl = conf ? h('div', { class: 'confcard2' },
+    h('p', { class: 'ch', style: 'color:var(--ink);margin:0' }, conf.head),
+    conf.lines.filter(l => l !== unrev).map(l => h('p', null, l)),
+    unrev ? h('p', { class: 'warnline' }, `Please check the ${unrev.match(/^\d+/)[0]} value${/^1 /.test(unrev) ? '' : 's'} we tidied up.`) : null,
+    eta && eta.bufferDays ? h('p', null, `No warehouse slot yet, so ${eta.bufferDays} days are added to the delivery estimate.`) : null,
+    h('p', { class: 'nx' }, 'What happens next'),
+    h('ol', null, conf.next.map(n => h('li', null, n)))) : null;
 
   const lines = b.items.map(it => (PF.isNum(it.qty) && PF.isNum(it.price) ? it.qty * it.price : null));
   const inv = ctx.mode === 'file' && b.items.length ? h('details', { class: 'invoice' }, h('summary', null, 'Items and customs codes'),
@@ -329,12 +387,17 @@ function reportEl(ev, ctx) {
 
   const stamp = hsStamp() ? h('p', { class: 'note hsstamp' }, hsStamp()) : null;
   const hist = ctx.history ? historyEl(ctx.history(ev), 'What changed') : null;
-  // Long sections fold to one line until the booking is clean, so the decisions above stay in view.
-  const fold = (el, line) => el ? h('details', { class: 'fold', open: status === 'Green' }, h('summary', null, line), el) : null;
-  const carrierFold = rec ? fold(carrierEl, `Choose your carrier · ${rec.chosen.carrier} · ${PF.gbp(rec.chosen.cost)} · ${rec.chosen.transit} days${rec.chosen.fits === false ? ' · too heavy' : ''}`) : null;
-  const confFold = fold(confEl, status === 'Red' ? 'Ready to book? · after the must-fix items are cleared' : 'Ready to book? · summary and next steps');
-  const fixHead = issues.length ? h('div', { class: 'sec-h' }, h('h3', null, 'Things to fix'), h('div', { class: 'tally' }, h('span', null, 'Must fix ', h('b', null, String(nRed))), h('span', null, 'Check ', h('b', null, String(nAmb))))) : null;
-  return h('div', { class: 'report' }, head, reviewEl(ev, ctx), fixHead, issueList, passedEl, warnEl, adv, carrierFold, confFold, inv, ctx.mode === 'file' ? stamp : null, hist);
+  const fixedN = ctx.fixedCount ? ctx.fixedCount(ev) : 0;
+  const tally = h('div', { class: 'tally' }, h('span', null, 'Must fix ', h('b', null, String(nRed))), h('span', null, 'Check ', h('b', null, String(nAmb))), h('span', null, 'Fixed ', h('b', null, String(fixedN))));
+  return h('div', { class: 'report' },
+    secH('Your check', 'updates every time you change something'), head,
+    reviewEl(ev, ctx),
+    issues.length ? secH('Things to fix', tally) : null, issueList, passedEl,
+    warnEl, adv,
+    rec ? secH('Choose your carrier', `${PF.isNum(b.pallets) ? PF.fmtNum(b.pallets) + ' pallet' + (b.pallets === 1 ? '' : 's') : ''}${PF.isNum(b.gross) ? ' · ' + PF.kg(b.gross) : ''} · ${b.originCity || '?'} → ${b.destCity || '?'}`) : null, carrierEl,
+    confEl ? secH('Ready to book?') : null, confEl,
+    inv, ctx.mode === 'file' ? stamp : null,
+    hist ? h('div', { class: 'histcard' }, hist) : null);
 }
 
 function planEl(ev, ctx) {
@@ -445,9 +508,9 @@ function miniVerdict(ev, priceNote) {
   return h('div', { class: 'mini v-' + ev.status },
     h('p', null, h('span', { class: 'ministamp' }, STAMP[ev.status]), ' ', `All checked — ${n}.`),
     ev.warnings && ev.warnings.length ? h('p', { class: 'mini-warn' }, warnIcon(), ` ${ev.warnings.length} road-freight warning${ev.warnings.length === 1 ? '' : 's'} — ${[...new Set(ev.warnings.map(w => w.title))].join(' · ')}.`) : null,
-    h('p', { class: 'muted' }, 'Your full check is in the booking sheet.'),
+    h('p', { class: 'muted' }, 'Your full check is below.'),
     ev.rec && priceNote ? h('p', { class: 'note' }, PRICE_TXT) : null,
-    h('button', { class: 'linkbtn only-narrow', type: 'button', onclick: () => $('#sheet').scrollIntoView({ behavior: 'smooth' }) }, 'See your check ↓'));
+    h('button', { class: 'linkbtn only-narrow', type: 'button', onclick: () => ($('#chat-report .report') || $('#sheet')).scrollIntoView({ behavior: 'smooth' }) }, 'See your check ↓'));
 }
 function confCard(ev, ref) {
   const conf = PF.confirmation(ev, Object.keys(cs.reviewed || {}).filter(id => ev.corrections.some(c => c.id === id)).length);
@@ -463,7 +526,8 @@ const chatReview = {
   change: (c, value) => { cs.reviewed = { ...(cs.reviewed || {}), [c.id]: { state: 'changed', value } }; send(`${c.sku ? c.label.toLowerCase() + ' for ' + c.sku : c.label.toLowerCase()} is ${value}`); },
   redraw: () => renderSheet(),
 };
-const chatCtx = { mode: 'chat', apply: a => send(a.say), review: chatReview, reviewedCount: ev => ev.corrections.filter(c => cs.reviewed && cs.reviewed[c.id]).length, history: () => audit.filter(e => e.chat) };
+let chatBase = null;
+const chatCtx = { mode: 'chat', fixedCount: ev => (chatBase ? chatBase.filter(id => !failingIds(ev).has(id)).length : 0), apply: a => send(a.say), review: chatReview, reviewedCount: ev => ev.corrections.filter(c => cs.reviewed && cs.reviewed[c.id]).length, history: () => audit.filter(e => e.chat) };
 
 function renderSheet() {
   const s = $('#sheet'); s.innerHTML = '';
@@ -487,7 +551,7 @@ function renderSheet() {
   const ev = PF.evaluate(C.toRaw(cs, cs.confirmed || 'CHAT'), { today: PF.todayISO() });
   renderMbar(cs.complete ? ev : null);
   setHero('chat', cs.complete ? ev : null, 'Your booking');
-  if (cs.complete) s.append(reportEl(ev, chatCtx));
+  const cr = $('#chat-report'); if (cr) { cr.innerHTML = ''; if (cs.complete) { if (!chatBase) chatBase = [...failingIds(ev)]; cr.append(reportEl(ev, chatCtx)); } else chatBase = null; }
   else {
     // While details are still being collected, don't flag what simply hasn't been asked yet.
     const its = b.items;
@@ -725,8 +789,8 @@ function renderFile() {
     h('button', { class: 'btn', type: 'button', onclick: exportResults, disabled: !rows.length }, 'Export results (.xlsx)')));
   fileData.notices.forEach(n => out.append(h('p', { class: 'notice n-' + n.level }, n.text)));
   if (!rows.length) { out.append(h('p', { class: 'note-warn' }, 'No bookings found under the header row.')); return; }
-  out.append(outcomesPanel().update(rows));
-  const exp = fileData.expected;
+  // The outcomes panel is kept in the code but not shown in the simplified UI.
+  const exp = null; // expected-results comparison is not shown in the simplified UI
   { const openR = rows.find(r2 => r2.i === openRow); setHero('file', openR ? openR.ev : null, openR ? openR.ev.b.id : ''); }
   const tbody = h('tbody');
   rows.filter(r => filter === 'All' || (filter === 'Review' ? toReview(r) > 0 : filter === 'Advisory' ? r.ev.advisories.length + r.ev.warnings.length > 0 : r.ev.status === filter)).forEach(r => {
@@ -746,6 +810,7 @@ function renderFile() {
     tbody.append(tr);
     if (open) {
       const ctx = { mode: 'file', apply: a => { if (a.audit !== false) logFix(r, a); const o = overrides[r.i] = overrides[r.i] || { patch: {}, items: {} }; if (a.patch) Object.assign(o.patch, a.patch); if (a.itemPatch) o.items[a.itemPatch.i] = { ...(o.items[a.itemPatch.i] || {}), ...a.itemPatch.f }; renderFile(); },
+        fixedCount: e2 => { const base = failingIds(PF.evaluate(r.raw, { today: PF.todayISO() })); const now = failingIds(e2); return [...base].filter(id => !now.has(id)).length; },
         review: fileReview(r, () => ctx), reviewedCount: e2 => e2.corrections.filter(c => (reviews[r.i] || {})[c.id]).length,
         history: () => audit.filter(e2 => !e2.chat && e2.booking === r.ev.b.id) };
       tbody.append(h('tr', { class: 'detail' }, h('td', { colspan: exp ? 8 : 7 },
