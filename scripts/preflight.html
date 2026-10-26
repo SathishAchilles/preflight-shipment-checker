@@ -200,6 +200,26 @@ details > summary { cursor: pointer; font-weight: 500; padding: 4px 0; }
 .chev { display: inline-block; width: 16px; color: var(--muted); }
 .btable tr.detail > td { background: var(--sheet-2); padding: 4px 18px 22px; }
 .btable tr.detail .report { border-top: 0; margin-top: 8px; }
+.outcomes { background: var(--sheet); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin: 4px 0 16px; }
+.oc-head h3 { font: 700 20px var(--cond); margin: 0; }
+.oc-head p { margin: 2px 0 10px; }
+.oc-stages { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.oc-stage { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--sheet-2); font-size: 14px; min-width: 0; }
+.oc-stage.hit { border-left: 4px solid var(--red); }
+.oc-n { font: 700 32px/1 var(--cond); }
+.oc-stage.hit .oc-n { color: var(--red); }
+.oc-ids { font-size: 13px; color: var(--muted); }
+.oc-id { white-space: nowrap; }
+.oc-now { align-self: flex-start; margin-top: 4px; font-weight: 600; font-size: 13px; padding: 1px 8px; border-radius: 3px; background: var(--red-tint); color: var(--red); }
+.oc-now.ok { background: var(--green-tint); color: var(--green); }
+.oc-est { margin-top: 8px; }
+.oc-scroll { overflow-x: auto; }
+.oc-table { border-collapse: collapse; width: 100%; max-width: 640px; font-size: 14px; }
+.oc-table th, .oc-table td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line-2); }
+.oc-table .r { text-align: right; } .oc-table .num { font-variant-numeric: tabular-nums; }
+.oc-table input { width: 100%; min-width: 64px; max-width: 110px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--sheet); color: var(--ink); font: inherit; }
+.oc-total { display: flex; flex-wrap: wrap; gap: 4px 24px; margin: 10px 0 0; }
+@media (max-width: 760px) { .oc-stages { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .pill { display: inline-block; font-weight: 600; font-size: 13px; padding: 1px 8px; border-radius: 3px; }
 .pill.p-Red { background: var(--red-tint); color: var(--red); } .pill.p-Amber { background: var(--amber-tint); color: var(--amber); } .pill.p-Green { background: var(--green-tint); color: var(--green); }
 .rchip { display: inline-block; font-size: 13px; font-weight: 600; margin: 0 4px 2px 0; padding: 0 6px; border-radius: 3px; border: 1px solid currentColor; }
@@ -1292,7 +1312,51 @@ function confirmation(ev, reviewed = 0) {
   return { head, lines, next };
 }
 
-const PF = { CARRIERS, RULES, PRICE_NOTE, CITY_COUNTRY, ORIGIN_CITIES, COO_LIST, PRIORITIES, EXAMPLE_BOOKING, EXAMPLE_ITEM,
+// ---------- Outcomes (reporting only; never changes a booking's status) ----------
+// Where a Red booking would most likely be stopped, in journey order. Each booking counts once, at its first stop.
+const OUTCOME_STAGES = [
+  { id: 'booking',    label: 'Bounced back as filed',     where: 'before booking — the details are missing or contradict each other', rules: [] },
+  { id: 'collection', label: 'Refused at collection',     where: 'at collection — the carrier refuses the pallet or the goods', rules: ['R-05', 'R-06'] },
+  { id: 'border',     label: 'Customs hold',              where: 'at the border — the commercial invoice does not hold up', rules: ['R-01', 'R-02'] },
+  { id: 'receipt',    label: 'Rejected at delivery',      where: 'at delivery — the counts do not match what was declared', rules: ['R-03', 'R-04'] },
+];
+function firstStop(ev) {
+  if (ev.dataIssues.some(d => d.sev === 'Red')) return 'booking';
+  const failed = new Set(ev.checks.filter(c => c.status === 'fail' && c.sev === 'Red').map(c => c.id));
+  const st = OUTCOME_STAGES.find(s => s.rules.some(r => failed.has(r)));
+  return st ? st.id : null;
+}
+// before/after: arrays of evaluate() results in the same booking order (as uploaded, and now with fixes applied).
+function outcomes(before, after = before) {
+  const stages = OUTCOME_STAGES.map(s => ({ ...s, before: [], now: [], avoided: [] }));
+  const byId = Object.fromEntries(stages.map(s => [s.id, s]));
+  const atRisk = [], clean = [];
+  before.forEach((ev, i) => {
+    const id = ev.b.id, stop = firstStop(ev), nowEv = after[i] || ev, nowStop = firstStop(nowEv);
+    if (stop) { byId[stop].before.push(id); if (!nowStop) byId[stop].avoided.push(id); }
+    if (nowStop) byId[nowStop].now.push(id);
+    if (!stop) (ev.status === 'Amber' ? atRisk : clean).push(id);
+  });
+  const stoppedBefore = stages.reduce((n, s) => n + s.before.length, 0);
+  const stoppedNow = stages.reduce((n, s) => n + s.now.length, 0);
+  const avoided = stages.reduce((n, s) => n + s.avoided.length, 0);
+  return { total: before.length, stages, stoppedBefore, stoppedNow, avoided, atRisk, clean };
+}
+// costs: { stageId: { low, high } } in GBP per booking, entered by the user. Blank stages are left out, never guessed.
+// which: 'avoided' (fixed since upload, the default) or 'before' (everything at stake as uploaded).
+function avoidedCost(out, costs = {}, which = 'avoided') {
+  const lines = [];
+  out.stages.forEach(s => {
+    const c = costs[s.id] || {}, lo = num(c.low), hi = num(c.high), n = s[which].length;
+    const has = v => isNum(v) && v >= 0;
+    if (!n || (!has(lo) && !has(hi))) return;
+    const low = has(lo) ? lo : hi, high = has(hi) ? Math.max(hi, low) : low;
+    lines.push({ stage: s.id, label: s.label, n, low, high, totalLow: low * n, totalHigh: high * n });
+  });
+  return { lines, low: lines.reduce((t, l) => t + l.totalLow, 0), high: lines.reduce((t, l) => t + l.totalHigh, 0) };
+}
+
+const PF = { CARRIERS, RULES, PRICE_NOTE, OUTCOME_STAGES, outcomes, avoidedCost, CITY_COUNTRY, ORIGIN_CITIES, COO_LIST, PRIORITIES, EXAMPLE_BOOKING, EXAMPLE_ITEM,
   num, gbp, kg, fmtNum, fmtDate, fmtDateLong, todayISO, addDays, weekday, isoFromYMD, parseSheetDate, normCountry, normCity, normPriority, normDestType, normYesNo, normHS,
   DG_ADR, scanDG, hsHint, setHsIndex, getHsIndex, hsMeta, hsLookup, hsHeading, hsShort, hsRecommend, hsTokens, hsSuggest, hsSugText, hsMaterialsOf, HS_MATERIALS, parseSheets, normaliseBooking, recommend, palletPlan, evaluate, confirmation, label, isNum, clean, isBlank, MONTHS, DAY_NAMES };
 if (typeof module !== 'undefined' && module.exports) module.exports = PF; else root.PF = PF;
@@ -1983,6 +2047,21 @@ function runTests(PF, CHAT) {
   T('Pallet plan', 'Same booking twice → identical plan', () => { const b = pb({ items: [{ sku: 'B', qty: 120, unitWeight: 2, upc: 6, cartons: 20 }, { sku: 'A', qty: 120, unitWeight: 2, upc: 6, cartons: 20 }] }); return expect(JSON.stringify(PF.palletPlan(b, 'Carrier B')) === JSON.stringify(PF.palletPlan(b, 'Carrier B'))); });
   T('Pallet plan', 'Fewer-pallets advisory: France, 4 pallets, 600 kg on Carrier A → advisory, status unchanged', () => { const e = ev(b => { b.destCity = 'Paris'; b.destCountry = 'France'; b.pallets = 4; b.gross = 600; b.carrierOverride = 'Carrier A'; }); const a = e.advisories.find(x => /^By weight, 2 pallets are enough on Carrier A/.test(x)); return expect(a && /saving £340/.test(a) && /check volume and stacking height/.test(a) && e.status === 'Green', [e.status, a]); });
 
+  // ---------- Outcomes ----------
+  const stageOf = (o, id) => (o.stages.find(s => s.before.includes(id)) || {}).id || null;
+  T('Outcomes', 'Clean booking → clean, no stop', () => { const o = PF.outcomes([ev()]); return expect(o.clean.length === 1 && o.stoppedBefore === 0, JSON.stringify(o.clean)); });
+  T('Outcomes', 'R-05 fail → refused at collection', () => { const o = PF.outcomes([ev(b => { b.gross = 1800; })]); return expect(stageOf(o, 'BK-T') === 'collection', stageOf(o, 'BK-T')); });
+  T('Outcomes', 'R-01 fail → customs hold at the border', () => expect(stageOf(PF.outcomes([ev(b => b.items[0].hs = 6912)]), 'BK-T') === 'border'));
+  T('Outcomes', 'R-04 fail → rejected at delivery', () => expect(stageOf(PF.outcomes([ev(b => b.cartons = 80)]), 'BK-T') === 'receipt'));
+  T('Outcomes', 'R-01 and R-04 together → counted once, at the earlier stop (border)', () => { const o = PF.outcomes([ev(b => { b.items[0].hs = 6912; b.cartons = 80; })]); return expect(o.stoppedBefore === 1 && stageOf(o, 'BK-T') === 'border', o.stoppedBefore); });
+  T('Outcomes', 'Red data issue → bounced back as filed, before any rule stop', () => expect(stageOf(PF.outcomes([ev(b => { b.destCity = 'Paris'; b.items[0].hs = 6912; })]), 'BK-T') === 'booking'));
+  T('Outcomes', 'Amber only (R-08) → at risk, not a stop', () => { const o = PF.outcomes([ev(b => b.appointment = 'No')]); return expect(o.stoppedBefore === 0 && o.atRisk.length === 1); });
+  T('Outcomes', 'Fixed after upload → avoided; still Red → not avoided', () => { const bad = ev(b => b.items[0].hs = 6912); const o1 = PF.outcomes([bad], [ev()]); const o2 = PF.outcomes([bad], [bad]); return expect(o1.avoided === 1 && o1.stoppedNow === 0 && o2.avoided === 0 && o2.stoppedNow === 1, `${o1.avoided}/${o2.avoided}`); });
+  T('Outcomes', 'Outcomes never change the booking status', () => { const e = ev(b => b.items[0].hs = 6912); PF.outcomes([e]); return expect(e.status === 'Red'); });
+  T('Outcomes', 'Avoided cost: n × low–high per stage; blank stages left out', () => { const o = PF.outcomes([ev(b => b.items[0].hs = 6912), ev(b => b.items[0].hs = 6912)], [ev(), ev()]); const c = PF.avoidedCost(o, { border: { low: '500', high: 1500 }, collection: { low: 99 } }); return expect(c.lines.length === 1 && c.low === 1000 && c.high === 3000, JSON.stringify(c)); });
+  T('Outcomes', 'Avoided cost: only one bound entered → used for both; no inputs → £0 and no lines', () => { const o = PF.outcomes([ev(b => b.items[0].hs = 6912)], [ev()]); const a = PF.avoidedCost(o, { border: { high: 800 } }); const z = PF.avoidedCost(o, {}); return expect(a.low === 800 && a.high === 800 && z.lines.length === 0 && z.high === 0, JSON.stringify(a)); });
+  T('Outcomes', 'At stake as uploaded counts every stop, fixed or not', () => { const o = PF.outcomes([ev(b => b.items[0].hs = 6912), ev(b => b.gross = 1800)], [ev(), ev(b => b.gross = 1800)]); const c = PF.avoidedCost(o, { border: { low: 500 }, collection: { low: 200 } }, 'before'); return expect(c.low === 700 && PF.avoidedCost(o, { border: { low: 500 }, collection: { low: 200 } }).low === 500, JSON.stringify(c)); });
+
   // ---------- File parsing ----------
   const H1 = ['Booking ID', 'Seller name', 'Origin city', 'Origin country', 'Destination city', 'Destination country', 'Destination type', 'Ready to ship date', 'Seller priority', 'Pallets', 'Cartons', 'Total declared value', 'Currency', 'Total gross weight (kg)', 'Delivery appointment booked'];
   const H2 = ['Booking ID', 'SKU', 'Description', 'HS code', 'Quantity (units)', 'Unit price', 'Units per carton', 'Cartons', 'Unit weight (kg)', 'Country of origin'];
@@ -2431,6 +2510,7 @@ async function loadFiles(files) {
 function ingest(sheets, name) {
   const parsed = PF.parseSheets(sheets, { skipExample: $('#skip-ex').checked });
   fileData = { ...parsed, expected: readExpected(sheets), name, sheets };
+  fileData.baseline = fileData.bookings.map(b => PF.evaluate(b, { today: PF.todayISO() }));
   Object.keys(overrides).forEach(k => delete overrides[k]); Object.keys(reviews).forEach(k => delete reviews[k]);
   audit.length = 0; auditSeen.clear(); openRow = null; filter = 'All';
   renderFile();
@@ -2439,6 +2519,47 @@ function showFileError(msg) { $('#file-results').innerHTML = ''; $('#file-result
 function applyOv(raw, ov) {
   if (!ov) return raw;
   return { ...raw, ...ov.patch, items: raw.items.map((it, i) => ({ ...it, ...((ov.items || {})[i] || {}) })) };
+}
+// ---------- Outcomes panel (reporting only; statuses still come from the rulebook) ----------
+const COST_KEY = 'pf-outcome-costs';
+let costs = {}; try { costs = JSON.parse(localStorage.getItem(COST_KEY) || '{}') || {}; } catch (e) { costs = {}; }
+let costsOpen = false;
+function saveCosts() { try { localStorage.setItem(COST_KEY, JSON.stringify(costs)); } catch (e) {} }
+const ids = list => list.length ? list.map((id, i) => [i ? ', ' : '', h('span', { class: 'oc-id' }, id)]) : '—';
+const range = (lo, hi) => (lo === hi ? PF.gbp(lo) : `${PF.gbp(lo)}–${PF.gbp(hi)}`);
+function outcomesEl(rows) {
+  const o = PF.outcomes(fileData.baseline, rows.map(r => r.ev));
+  const stageCard = s => h('div', { class: 'oc-stage' + (s.before.length ? ' hit' : '') },
+    h('span', { class: 'oc-n' }, String(s.before.length)),
+    h('b', null, s.label), h('span', { class: 'muted' }, `Likely stopped ${s.where}.`),
+    h('span', { class: 'oc-ids' }, s.rules.length ? `${s.rules.join(', ')} · ` : 'Red data issues · ', ids(s.before)),
+    s.before.length ? h('span', { class: 'oc-now' + (s.now.length ? '' : ' ok') }, s.now.length ? `${s.now.length} still stopped` : 'All fixed') : null);
+  const total = h('p', { class: 'oc-total' });
+  const inputs = o.stages.map(s => ['low', 'high'].map(k => h('input', { type: 'number', min: 0, step: 50, inputmode: 'decimal', placeholder: '£', value: (costs[s.id] || {})[k] ?? '', 'aria-label': `${s.label}: ${k === 'low' ? 'low' : 'high'} cost per booking, £`,
+    oninput: e => { costs[s.id] = { ...(costs[s.id] || {}), [k]: e.target.value }; saveCosts(); paint(); } })));
+  const cells = o.stages.map(() => h('td', { class: 'r num' }));
+  function paint() {
+    const stake = PF.avoidedCost(o, costs, 'before'), saved = PF.avoidedCost(o, costs);
+    o.stages.forEach((s, i) => { const l = stake.lines.find(x => x.stage === s.id); cells[i].textContent = l ? range(l.totalLow, l.totalHigh) : '—'; });
+    total.replaceChildren(...(stake.lines.length
+      ? [h('span', null, 'At stake as uploaded: ', h('b', null, range(stake.low, stake.high))), h('span', null, 'Avoided by fixes so far: ', h('b', null, range(saved.low, saved.high)))]
+      : [h('span', { class: 'muted' }, 'Enter what one stopped booking costs you at each stage to see an estimate.')]));
+  }
+  const est = h('details', Object.assign({ class: 'oc-est', ontoggle: e => { costsOpen = e.target.open; } }, costsOpen ? { open: true } : {}),
+    h('summary', null, 'Estimate the cost (your figures)'),
+    h('p', { class: 'note' }, 'Cost per stopped booking: storage, re-delivery, demurrage, a missed slot. There are no default figures — use your own or your agent’s, as a low–high range. Saved in this browser only.'),
+    h('div', { class: 'oc-scroll' }, h('table', { class: 'oc-table' }, h('thead', null, h('tr', null, h('th', null, 'Stage'), h('th', { class: 'r' }, 'Stopped'), h('th', null, 'Low £'), h('th', null, 'High £'), h('th', { class: 'r' }, 'At stake'))),
+      h('tbody', null, o.stages.map((s, i) => h('tr', null, h('td', null, s.label), h('td', { class: 'r num' }, String(s.before.length)), h('td', null, inputs[i][0]), h('td', null, inputs[i][1]), cells[i]))))),
+    total,
+    h('p', { class: 'note' }, 'Estimate — based on your inputs, not measured. Only bookings fixed here count as avoided. Kept separate from carrier prices.'));
+  paint();
+  return h('section', { class: 'outcomes', 'aria-label': 'Outcomes' },
+    h('div', { class: 'oc-head' },
+      h('h3', null, `${o.stoppedBefore} of ${o.total} bookings would likely have been stopped as uploaded`),
+      h('p', { class: 'muted' }, o.stoppedBefore ? `${o.avoided} fixed here · ${o.stoppedNow} still stopped · ${o.atRisk.length} more need a look (Amber, not counted) · ${o.clean.length} clean` : `${o.atRisk.length} need a look (Amber) · ${o.clean.length} clean`)),
+    h('div', { class: 'oc-stages' }, o.stages.map(stageCard)),
+    h('p', { class: 'note' }, 'Each booking counts once, at the first place it would be stopped. Reporting only — Red, Amber and Green still come from the rulebook.'),
+    est);
 }
 function evalAll() { return fileData.bookings.map((b, i) => ({ i, raw: b, ev: PF.evaluate(applyOv(b, overrides[i]), { today: PF.todayISO() }), edited: !!overrides[i] })); }
 function toReview(r) { return r.ev.corrections.filter(c => !(reviews[r.i] || {})[c.id]).length; }
@@ -2475,6 +2596,7 @@ function renderFile() {
     h('button', { class: 'btn', type: 'button', onclick: exportResults, disabled: !rows.length }, 'Export results (.xlsx)')));
   fileData.notices.forEach(n => out.append(h('p', { class: 'notice n-' + n.level }, n.text)));
   if (!rows.length) { out.append(h('p', { class: 'note-warn' }, 'No bookings found under the header row.')); return; }
+  out.append(outcomesEl(rows));
   const exp = fileData.expected;
   const tbody = h('tbody');
   rows.filter(r => filter === 'All' || r.ev.status === filter).forEach(r => {

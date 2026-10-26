@@ -200,6 +200,26 @@ details > summary { cursor: pointer; font-weight: 500; padding: 4px 0; }
 .chev { display: inline-block; width: 16px; color: var(--muted); }
 .btable tr.detail > td { background: var(--sheet-2); padding: 4px 18px 22px; }
 .btable tr.detail .report { border-top: 0; margin-top: 8px; }
+.outcomes { background: var(--sheet); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin: 4px 0 16px; }
+.oc-head h3 { font: 700 20px var(--cond); margin: 0; }
+.oc-head p { margin: 2px 0 10px; }
+.oc-stages { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.oc-stage { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--sheet-2); font-size: 14px; min-width: 0; }
+.oc-stage.hit { border-left: 4px solid var(--red); }
+.oc-n { font: 700 32px/1 var(--cond); }
+.oc-stage.hit .oc-n { color: var(--red); }
+.oc-ids { font-size: 13px; color: var(--muted); }
+.oc-id { white-space: nowrap; }
+.oc-now { align-self: flex-start; margin-top: 4px; font-weight: 600; font-size: 13px; padding: 1px 8px; border-radius: 3px; background: var(--red-tint); color: var(--red); }
+.oc-now.ok { background: var(--green-tint); color: var(--green); }
+.oc-est { margin-top: 8px; }
+.oc-scroll { overflow-x: auto; }
+.oc-table { border-collapse: collapse; width: 100%; max-width: 640px; font-size: 14px; }
+.oc-table th, .oc-table td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line-2); }
+.oc-table .r { text-align: right; } .oc-table .num { font-variant-numeric: tabular-nums; }
+.oc-table input { width: 100%; min-width: 64px; max-width: 110px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--sheet); color: var(--ink); font: inherit; }
+.oc-total { display: flex; flex-wrap: wrap; gap: 4px 24px; margin: 10px 0 0; }
+@media (max-width: 760px) { .oc-stages { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .pill { display: inline-block; font-weight: 600; font-size: 13px; padding: 1px 8px; border-radius: 3px; }
 .pill.p-Red { background: var(--red-tint); color: var(--red); } .pill.p-Amber { background: var(--amber-tint); color: var(--amber); } .pill.p-Green { background: var(--green-tint); color: var(--green); }
 .rchip { display: inline-block; font-size: 13px; font-weight: 600; margin: 0 4px 2px 0; padding: 0 6px; border-radius: 3px; border: 1px solid currentColor; }
