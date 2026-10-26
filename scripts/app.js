@@ -438,19 +438,37 @@ function planEl(ev, ctx) {
 // ---------- CHAT ----------
 let cs = C.newState();
 const log = $('#chat-log');
-const STARTERS = [
-  "Hi, I'm Priya from Northfield Goods. We need to send 3 pallets from Manchester to our Amazon warehouse in Frankfurt, ready 5 Nov. 1080 ceramic mugs at £5 each, 12 per carton, 0.5kg each, HS 691200, made in the UK. Total weight 620kg. Delivery slot is booked. Cheapest please.",
-  'I need to ship some scented candles to Paris',
-  'Sending 2 pallets of cast iron pans to a warehouse in Hamburg, fastest option',
-];
 function bubble(role, ...kids) { const b = h('div', { class: 'msg ' + role }, ...kids); log.append(b); log.scrollTop = log.scrollHeight; return b; }
 function chipsEl(chips, cls = '') { return h('div', { class: 'chips ' + cls }, chips.map(c => h('button', { class: 'chip', type: 'button', onclick: () => send(c === 'Don’t know' ? "don't know" : c) }, c))); }
 function clearChips() { log.querySelectorAll('.chips.live').forEach(c => c.remove()); }
 function greet() {
   log.innerHTML = '';
-  bubble('bot', h('p', null, 'Describe your shipment the way you’d tell a colleague — what you’re sending, where from and to, how many pallets. I’ll ask only for what’s missing, then run the ten pre-flight checks and recommend a carrier.'),
-    h('p', { class: 'muted' }, 'Routes: London, Manchester, Birmingham or Leeds → Berlin, Frankfurt, Hamburg, Paris, Lyon, Amsterdam or Rotterdam.'),
-    h('div', { class: 'chips live starters' }, h('span', { class: 'chips-label' }, 'Try:'), STARTERS.map((s, i) => h('button', { class: 'chip', type: 'button', onclick: () => send(s) }, ['Everything in one go', 'Start sparse', 'Heavy & urgent'][i]))));
+  // Interactive intro: phrases and cities write into the message box; nothing is sent until the seller presses Send.
+  const input = $('#chat-input');
+  const pick = { from: null, to: null };
+  const ORIGINS = ['London', 'Manchester', 'Birmingham', 'Leeds'];
+  const DESTS_BY = [['Germany', ['Berlin', 'Frankfurt', 'Hamburg']], ['France', ['Paris', 'Lyon']], ['Netherlands', ['Amsterdam', 'Rotterdam']]];
+  const add = text => { const v = input.value.trim().replace(/[,.\s]+$/, ''); input.value = v ? `${v}, ${text}` : text.charAt(0).toUpperCase() + text.slice(1); input.focus(); input.dispatchEvent(new Event('input')); };
+  const routeRe = /,?\s*\b(?:[Ss]hip\s+)?from\s+(?:London|Manchester|Birmingham|Leeds)(?:\s+to\s+(?:Berlin|Frankfurt|Hamburg|Paris|Lyon|Amsterdam|Rotterdam))?|,?\s*\bto\s+(?:Berlin|Frankfurt|Hamburg|Paris|Lyon|Amsterdam|Rotterdam)\b/g;
+  const writeRoute = () => {
+    const base = input.value.replace(routeRe, '').trim().replace(/^[,\s]+/, '');
+    const phrase = pick.from && pick.to ? `ship from ${pick.from} to ${pick.to}` : pick.from ? `ship from ${pick.from}` : pick.to ? `ship to ${pick.to}` : '';
+    input.value = base; if (phrase) add(phrase); else input.focus();
+    box.querySelectorAll('button[data-city]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.city === pick[b.dataset.role])));
+  };
+  const city = (name, role) => h('button', { class: 'chip city', type: 'button', 'data-city': name, 'data-role': role, 'aria-pressed': 'false', onclick: () => { pick[role] = pick[role] === name ? null : name; writeRoute(); } }, name);
+  const phrase = (label, text, title) => h('button', { class: 'ilink', type: 'button', title, onclick: () => add(text) }, label);
+  const box = h('div', { class: 'intro' },
+    h('p', null, 'Describe your shipment the way you’d tell a colleague — ',
+      phrase('what you’re sending', '240 ceramic mugs at £5 each, 12 per carton, 0.5 kg each', 'Add an example item'), ', ',
+      phrase('where from and to', 'ship from Manchester to Berlin', 'Add an example route'), ', ',
+      phrase('how many pallets', 'on 2 pallets', 'Add a pallet count'),
+      '. I’ll ask only for what’s missing, then run the ten pre-flight checks and recommend a carrier.'),
+    h('p', { class: 'mini-h' }, 'Routes — tap to add to your message'),
+    h('div', { class: 'route-pick' },
+      h('div', { class: 'rp-row' }, h('span', { class: 'rp-lab' }, 'From'), ORIGINS.map(c => city(c, 'from'))),
+      h('div', { class: 'rp-row' }, h('span', { class: 'rp-lab' }, 'To'), DESTS_BY.map(([country, cs]) => h('span', { class: 'rp-group', title: country }, cs.map(c => city(c, 'to')))))));
+  bubble('bot', box);
 }
 function changeLine(c) { return c.from === '—' || c.first ? `${c.label}: ${c.to}` : `${c.label}: ${c.from} → ${c.to}`; }
 function groupChanges(ch) {

@@ -98,6 +98,16 @@ main { max-width: 1320px; margin: 0 auto; padding: 20px 24px 48px; }
 .note-warn { border-left: 3px solid var(--amber); padding-left: 10px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; align-items: center; }
 .chips-label { color: var(--muted); font-size: 13px; }
+.intro p { margin-bottom: 8px; }
+.ilink { background: none; border: 0; padding: 0; font: inherit; color: var(--route); border-bottom: 1px dashed rgba(79,209,255,.6); cursor: pointer; }
+.ilink:hover { color: var(--ink); border-bottom-color: var(--ink); }
+.route-pick { display: grid; gap: 6px; margin-top: 4px; }
+.rp-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.rp-lab { font: 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); width: 38px; }
+.rp-group { display: inline-flex; gap: 6px; flex-wrap: wrap; padding-right: 6px; margin-right: 2px; border-right: 1px solid var(--line); }
+.rp-group:last-child { border-right: 0; }
+.chip.city { font-size: 13px; padding: 3px 11px; }
+.chip.city[aria-pressed="true"] { background: linear-gradient(90deg, var(--route), #A6E9FF); color: var(--route-ink); border-color: transparent; }
 .chip { border: 1px solid rgba(79,209,255,.4); color: var(--route); background: var(--route-tint); border-radius: 999px; padding: 4px 12px; font-size: 13.5px; cursor: pointer; transition: background .2s; }
 .chip:hover { background: rgba(79,209,255,.18); }
 .chat-form { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--line-2); }
