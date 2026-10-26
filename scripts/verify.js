@@ -1,4 +1,5 @@
 const XLSX=require('xlsx'),PF=require('./engine.js'),fs=require('fs');
+PF.setHsIndex(require('../assets/hs_index.json'));
 const wb=XLSX.read(fs.readFileSync('../assets/Preflight_Test_Cases.xlsx'),{type:'buffer'});
 const sheets=wb.SheetNames.map(n=>({name:n,rows:XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,raw:true,defval:null,blankrows:true})}));
 const {bookings,notices}=PF.parseSheets(sheets);

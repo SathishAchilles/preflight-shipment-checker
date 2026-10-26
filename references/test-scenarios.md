@@ -64,6 +64,13 @@ Base booking: Manchester → Frankfurt warehouse, 3 pallets, 90 cartons, £5,400
 | C27 | Ready "31-02-2026" | Red data; R-10 cannot run |
 | C28 | Ready Saturday | Collection Monday |
 | C29 | Several planted errors at once | Each listed: 2 Red + 2 Amber |
+| C30 | HS numeric 90111 | R-01 Red; fix recommends 090111 (Coffee, not roasted) + "Use 090111"; code stays 90111 |
+| C31 | HS 6912 | R-01 Red; fix recommends 691200 (only subheading); code stays 6912 |
+| C32 | HS 6115 | R-01 Red; "9 subheadings", no single pick |
+| C33 | HS 999999 | R-01 pass; Advisory "not an HS subheading"; status unchanged |
+| C34 | HS 850700 | R-01 pass; Advisory: heading 8507 has 7 subheadings |
+| C35 | HS 6912001000 | R-01 pass; Advisory: 691200 valid, full code not a UK commodity code |
+| C36 | HS numeric 901110000 | R-01 pass; one Advisory: reads as microscopes, recommends 0901110000 |
 
 ## C+. HS code suggestions (when HS is empty)
 | # | Item name | Expected |

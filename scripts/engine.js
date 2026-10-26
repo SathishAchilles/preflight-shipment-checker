@@ -303,6 +303,46 @@ const HS_HINTS = [
 ];
 function hsHint(desc) { const d = clean(desc); for (const [re, code, label] of HS_HINTS) if (re.test(d)) return { code, label }; return null; }
 
+// ---------- UK tariff index (assets/hs_index.json, exported from Supabase) ----------
+// Read-only lookups. With no index loaded every lookup returns { known: null } and nothing is checked.
+let HSX = null;
+function setHsIndex(idx) {
+  if (!idx || !idx.h6) { HSX = null; return; }
+  HSX = { raw: idx, meta: idx.meta || {}, h4: new Map(Object.entries(idx.h4 || {})), h6: new Map(Object.entries(idx.h6)), cn8: idx.cn8 || [], l10: idx.l10 || [] };
+}
+function getHsIndex() { return HSX ? HSX.raw : null; }
+function hsMeta() { return HSX ? HSX.meta : null; }
+function inSorted(arr, v) { let lo = 0, hi = arr.length - 1; while (lo <= hi) { const m = (lo + hi) >> 1; if (arr[m] === v) return true; if (arr[m] < v) lo = m + 1; else hi = m - 1; } return false; }
+function hsLookup(digits) {
+  if (!HSX) return { known: null };
+  const d = String(digits == null ? '' : digits).replace(/\D/g, '');
+  if (d.length < 6) return { known: false, hs6: d, desc: null, full: 'n/a' };
+  const hs6 = d.slice(0, 6), desc = HSX.h6.get(hs6) || null;
+  const full = d.length === 8 ? (inSorted(HSX.cn8, d) ? 'ok' : 'unknown') : d.length === 10 ? (inSorted(HSX.l10, d) ? 'ok' : 'unknown') : 'n/a';
+  return { known: !!desc, hs6, desc, full };
+}
+function hsHeading(h4) {
+  if (!HSX) return { known: null };
+  const k = String(h4 == null ? '' : h4).replace(/\D/g, '').slice(0, 4), desc = k.length === 4 ? HSX.h4.get(k) || null : null;
+  return { known: !!desc, desc, subs: desc ? [...HSX.h6.keys()].filter(c => c.startsWith(k)).sort() : [] };
+}
+// Short label for fix text: the heading's first clause plus the last level ("Coffee > Coffee, not roasted").
+function hsShort(desc) {
+  if (!desc) return '';
+  const parts = desc.split(' > ');
+  if (parts.length === 1) return desc.length > 110 ? desc.slice(0, 107).replace(/[ ,;]+\S*$/, '') + '…' : desc;
+  return `${parts[0].split(/[;,]/)[0]} > ${parts[parts.length - 1]}`;
+}
+// Codes recommended from the code as entered (never applied; shown with a "Use" action): lost leading zeros, single-subheading headings.
+function hsRecommend(hs) {
+  if (!HSX || !hs || hs.blank || hs.hasLetters) return [];
+  const d = hs.digits, out = [];
+  if (hs.numericCell && [5, 7, 9].includes(d.length)) { const r = hsLookup('0' + d); if (r.known) out.push({ code: '0' + d, desc: r.desc, why: 'leading zero dropped by the spreadsheet' }); }
+  if (d.length === 4) { const h = hsHeading(d); if (h.known && h.subs.length === 1) out.push({ code: h.subs[0], desc: HSX.h6.get(h.subs[0]), why: `the only subheading of heading ${d}` }); }
+  return out;
+}
+if (root.HS_INDEX) setHsIndex(root.HS_INDEX);
+
 // ---------- File parsing: sheet arrays -> booking objects ----------
 const KEY = s => clean(s).toLowerCase().replace(/[^a-z0-9]/g, '');
 const BOOKING_COLS = {
@@ -481,6 +521,7 @@ function normaliseBooking(raw) {
     if (!clean(it.sku)) amber(`Item ${i + 1}`, `Item line ${i + 1}${it.rowNum ? ' (row ' + it.rowNum + ')' : ''} has no SKU.`, 'Add the seller SKU so the warehouse can match cartons.');
     if (!n.description) red(lab, `${lab} has no description.`, 'Describe the product in plain words — customs and the dangerous-goods check need it.');
     n.hs = normHS(it.hs);
+    n.hsRec = hsRecommend(n.hs);
     const v = (f, label, isCount) => {
       const x = num(it[f]);
       if (x == null) { red(lab, `${lab}: ${label} is missing.`, `Enter ${label} for ${lab}.`); return null; }
@@ -615,6 +656,42 @@ function palletPlan(b, chosenCarrier) {
 }
 
 // ---------- Rulebook evaluation ----------
+// R-01 fix text for one item: index-based recommendations first, the curated hint as the fallback.
+function r01Fix(it) {
+  const d = it.hs.digits || '', rec = it.hsRec || [];
+  const lz = rec.find(r => /leading zero/.test(r.why));
+  if (lz) return `Add a 6+ digit HS code for ${it.sku} — recommended ${lz.code} (${hsShort(lz.desc)}): the spreadsheet dropped the leading zero, so store the code as text. Verify on trade-tariff.service.gov.uk.`;
+  if (!it.hs.blank && !it.hs.hasLetters && d.length === 4) {
+    const h = hsHeading(d);
+    if (h.known && h.subs.length === 1) return `Add a 6+ digit HS code for ${it.sku} — heading ${d} (${hsShort(h.desc)}) has one subheading: recommended 6-digit code: ${h.subs[0]}.`;
+    if (h.known) return `Add a 6+ digit HS code for ${it.sku} — heading ${d} (${hsShort(h.desc)}) has ${h.subs.length} subheadings; choose the one that matches the item on trade-tariff.service.gov.uk.`;
+    if (h.known === false) return `Add a 6+ digit HS code for ${it.sku} — heading ${d} is not in the UK tariff; look the item up on trade-tariff.service.gov.uk.`;
+  }
+  const h = hsHint(it.description);
+  return `Add a 6+ digit HS code for ${it.sku}${h ? ` — for ${h.label} it is usually ${h.code} (verify on the UK Trade Tariff)` : ' — look it up on the UK Trade Tariff (trade-tariff.service.gov.uk)'}.`;
+}
+// HS advisories from the tariff index for codes that pass R-01 (never change the status).
+function hsAdvisories(items) {
+  const out = [], meta = hsMeta();
+  if (!meta) return out;
+  items.forEach(it => {
+    const d = it.hs.digits || '';
+    if (it.hs.blank || it.hs.hasLetters || d.length < 6) return;
+    const r = hsLookup(d), lz = (it.hsRec || []).find(x => /leading zero/.test(x.why));
+    if (lz && (d.length === 7 || d.length === 9)) {
+      out.push(`${it.sku}: HS code ${it.hs.raw} reads as ${r.hs6}${r.known ? ` (${hsShort(r.desc)})` : ', which is not in the UK tariff'}. The spreadsheet probably dropped a leading zero: recommended ${lz.code} (${hsShort(lz.desc)}). Store codes as text.`);
+      return;
+    }
+    if (!r.known) {
+      const h = hsHeading(d.slice(0, 4));
+      out.push(`${it.sku}: HS code ${it.hs.raw} — ${r.hs6} is not an HS subheading in the UK tariff snapshot ${meta.version}.${h.known ? ` Heading ${d.slice(0, 4)} (${hsShort(h.desc)}) has ${h.subs.length} subheading${h.subs.length === 1 ? '' : 's'} to choose from.` : ` Heading ${d.slice(0, 4)} is not in the tariff either; look the item up on trade-tariff.service.gov.uk.`}`);
+      return;
+    }
+    if ((d.length === 8 || d.length === 10) && r.full === 'unknown') out.push(`${it.sku}: the first 6 digits (${r.hs6}) are a valid HS subheading, but ${d} is not a current UK commodity code — check the last digits on trade-tariff.service.gov.uk.`);
+  });
+  return out;
+}
+
 function evaluate(rawOrNorm, opts = {}) {
   const today = opts.today || todayISO();
   const b = rawOrNorm.dataIssues ? rawOrNorm : normaliseBooking(rawOrNorm);
@@ -633,7 +710,7 @@ function evaluate(rawOrNorm, opts = {}) {
       if (it.hs.hasLetters) return `${it.sku}: HS code “${it.hs.raw}” contains letters.`;
       const lz = it.hs.numericCell && it.hs.digits.length === 5 ? ' (if it really starts with 0, Excel dropped the leading zero — store the code as text)' : '';
       return `${it.sku}: HS code “${it.hs.raw}” has only ${it.hs.digits.length} digit${it.hs.digits.length === 1 ? '' : 's'}${lz}.`;
-    }).join(' '), bad.map(it => { const h = hsHint(it.description); return `Add a 6+ digit HS code for ${it.sku}${h ? ` — for ${h.label} it is usually ${h.code} (verify on the UK Trade Tariff)` : ' — look it up on the UK Trade Tariff (trade-tariff.service.gov.uk)'}.`; }).join(' '), { items: bad.map(i => i.sku) });
+    }).join(' '), bad.map(r01Fix).join(' '), { items: bad.map(i => i.sku) });
   }
   // R-02 declared value
   {
@@ -735,6 +812,7 @@ function evaluate(rawOrNorm, opts = {}) {
   const advisories = [];
   if (net != null && isNum(b.gross) && near(b.gross, net, 1e-6) && b.gross > 0) advisories.push('Gross weight equals the goods weight exactly, with nothing for cartons or pallets — it is probably the net weight.');
   items.forEach(it => { if (!it.hs.blank && !it.hs.hasLetters && it.hs.digits.length > 10) advisories.push(`${it.sku}: HS code has ${it.hs.digits.length} digits; UK/EU commodity codes are at most 10.`); });
+  advisories.push(...hsAdvisories(items));
   if (isNum(b.pallets) && isNum(b.cartons) && b.pallets > b.cartons) advisories.push(`More pallets (${b.pallets}) than cartons (${b.cartons}) — check the pallet count.`);
   items.forEach(it => {
     const adr = scanDG(`${it.description} ${it.sku}`).adr;
@@ -791,6 +869,6 @@ function confirmation(ev) {
 
 const PF = { CARRIERS, RULES, PRICE_NOTE, CITY_COUNTRY, ORIGIN_CITIES, COO_LIST, PRIORITIES, EXAMPLE_BOOKING, EXAMPLE_ITEM,
   num, gbp, kg, fmtNum, fmtDate, fmtDateLong, todayISO, addDays, weekday, isoFromYMD, parseSheetDate, normCountry, normCity, normPriority, normDestType, normYesNo, normHS,
-  DG_ADR, scanDG, hsHint, parseSheets, normaliseBooking, recommend, palletPlan, evaluate, confirmation, label, isNum, clean, isBlank, MONTHS, DAY_NAMES };
+  DG_ADR, scanDG, hsHint, setHsIndex, getHsIndex, hsMeta, hsLookup, hsHeading, hsShort, hsRecommend, parseSheets, normaliseBooking, recommend, palletPlan, evaluate, confirmation, label, isNum, clean, isBlank, MONTHS, DAY_NAMES };
 if (typeof module !== 'undefined' && module.exports) module.exports = PF; else root.PF = PF;
 })(typeof window !== 'undefined' ? window : globalThis);

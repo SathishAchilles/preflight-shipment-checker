@@ -3,7 +3,8 @@
 ## 1. Architecture
 - **Pure engine** (`engine.js`) → normalise → evaluate → recommend → confirm. Same code runs in Node tests and the browser, so tests prove what judges see.
 - **Chat** (`chat.js`) only produces a booking object; it reuses the same engine for checks.
-- **No AI model, no server.** Deterministic, instant, works offline on any static host, explainable.
+- **No AI model, no server.** Deterministic, instant, works on any static host, explainable.
+- **HS tariff data** is held in Supabase (`preflight` schema: every UK tariff snapshot loaded by `snapshot_tariff.py`, plus HMRC search references). `export_hs_index.py` turns the current snapshot into `assets/hs_index.json`, which the build inlines. At runtime the app never touches the database or any tariff API; every HS result is checked against the bundled snapshot, whose version and date are shown in the report.
 
 ## 2. Reading uploaded files
 1. Each sheet → array of rows (SheetJS, `raw:true`; CSV read as text so `05-11-2026` isn't turned into 11 May).
@@ -27,7 +28,7 @@
 ## 4. Rulebook
 | Rule | Pass condition / edge handling | Fix text |
 |---|---|---|
-| R-01 HS (Red) | ≥6 digits, no letters. 5-digit *numeric* cell → hint "Excel dropped the leading zero". >10 digits → advisory only. | Suggested code from the item name (~75 product patterns, specific before general: tea towel 630291 before towel 630260). Never auto-applied; shown in the fix text, a one-click "Use 691200" button, the invoice table and the live sheet. No match → link to the UK Trade Tariff. |
+| R-01 HS (Red) | ≥6 digits, no letters, checked **as entered** (formatting such as dots, spaces, `.0` and an "HS" prefix is removed; digits are never added, removed or changed). 5-digit *numeric* cell → "Excel dropped the leading zero", and when `0`+code is in the tariff snapshot the fix recommends it with its description (90111 → 090111 Coffee, not roasted). 4-digit heading → the fix names the heading and recommends its subheading when it has only one (6912 → 691200), or says how many it has (6115: 9), or that the heading is not in the tariff. >10 digits → advisory only. Recommendations are carried on the item (`hsRec`) and applied only by a "Use" click. | Suggested code from the item name (~75 product patterns, specific before general: tea towel 630291 before towel 630260). Never auto-applied; shown in the fix text, a one-click "Use 691200" button, the invoice table and the live sheet. No match → link to the UK Trade Tariff. |
 | R-02 Value (Red) | `|declared − Σqty×price| / Σ ≤ 1%` (inclusive). | Set declared to Σ; if gap = one item's line → "item left out / counted twice"; ×10 gap → "misplaced zero". |
 | R-03 Packing (Red) | Per item `units/carton × cartons = qty` exactly. | Offer qty = upc×cartons, or cartons = qty÷upc only if whole. |
 | R-04 Cartons (Red) | Booking cartons = Σ item cartons. | Set to Σ; name the item whose cartons equal the gap. |
@@ -45,6 +46,8 @@
 **Pallet plan (Advisory):** for each carrier on the route, the fewest pallets the weight allows (⌈weight ÷ max kg⌉), kg per pallet and cost; planning weight is the gross weight, or goods + 25 kg/pallet labelled as an estimate. If the booking uses more pallets than its chosen carrier needs, an advisory names the smaller count and the saving ("check volume and stacking height"). Cartons are split by weight, heaviest first onto the lightest pallet. Every option is a "Use N pallets" button; nothing changes without a click.
 
 **Prices:** every price is shown with "Indicative rate per pallet for the destination country. Actual prices vary by collection and delivery city, fuel surcharge and date — confirm with the carrier." (`PF.PRICE_NOTE`; once per chat).
+
+**HS tariff advisories (UK tariff snapshot; never change the status):** for codes that pass R-01 — first 6 digits not an HS subheading (999999; 850700 names heading 8507 and its 7 subheadings); 8 or 10 digits whose HS-6 is valid but the full code is not a current UK commodity code (6912001000); a 7- or 9-digit *numeric* cell is checked as entered and, when `0`+code is in the tariff, one advisory says what it reads as now and recommends the padded code (901110000 reads as microscopes → 0901110000 coffee). With no index loaded none of these run.
 
 **Data-quality checks (labelled "Data"):** missing required fields, non-numeric, zero/negative, fractional counts, unknown city/country/route, city–country mismatch, non-GBP, no items, duplicate Booking ID (matched after trimming spaces and ignoring case), duplicate SKU, missing SKU/description, orphan items.
 

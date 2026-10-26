@@ -25,11 +25,11 @@
 - [x] 1.5 Create `scripts/export_hs_index.py`: one `psql -XAt` query builds the whole index as a JSON value from the views (D3 format, `meta` from `v_current` plus `store: "supabase preflight schema"`, arrays sorted by code); the script runs the D7 self-checks and writes `assets/hs_index.json` minified only when all pass.
   - Verify: the run prints the counts and `OK`; running it twice gives the same `shasum`; with the stack stopped it exits non-zero and leaves the existing file untouched.
 - [x] 1.6 Export once and commit `assets/hs_index.json`. Verify: the file exists, is ≤ 2.0 MB, `refs` has between 8,000 and 8,940 entries, and `python3 -I -c "import json;d=json.load(open('assets/hs_index.json'));print(d['meta'])"` shows `v4.0.1639`, `2026-10-26` and `store`.
-- [ ] 1.7 Document in `SKILL.md` (Files table and Workflow): `.env.local`, the migration, the refresh (`snapshot_tariff.py` then `export_hs_index.py`), and that the app, the build and the tests need only the committed JSON. Note in `references/logic.md` §1 that the HS data is held in Supabase and the app uses a bundled export with no database or network at runtime. Verify: both files mention `snapshot_tariff.py`, `export_hs_index.py`, `preflight` schema and `assets/hs_index.json`.
+- [x] 1.7 Document in `SKILL.md` (Files table and Workflow): `.env.local`, the migration, the refresh (`snapshot_tariff.py` then `export_hs_index.py`), and that the app, the build and the tests need only the committed JSON. Note in `references/logic.md` §1 that the HS data is held in Supabase and the app uses a bundled export with no database or network at runtime. Verify: both files mention `snapshot_tariff.py`, `export_hs_index.py`, `preflight` schema and `assets/hs_index.json`.
 
 ## 2. Engine: index lookups (no behaviour change yet)
 
-- [ ] 2.1 In `scripts/engine.js`, add `setHsIndex(idx)`. It builds a Set for `h6` and a Map for `h4`/`h6` descriptions once, and keeps the sorted `cn8`/`l10` arrays.
+- [x] 2.1 In `scripts/engine.js`, add `setHsIndex(idx)`. It builds a Set for `h6` and a Map for `h4`/`h6` descriptions once, and keeps the sorted `cn8`/`l10` arrays.
   - Add `hsLookup(digits)` returning `{ known, hs6, desc, full: 'ok'|'unknown'|'n/a' }`. It uses binary search on `cn8` for 8 digits and on `l10` for 10 digits; other lengths give `n/a`.
   - Add `hsHeading(h4)` returning `{ known, desc, subs: [hs6…] }`.
   - With no index loaded, every function returns `{ known: null }` and never throws.
@@ -41,18 +41,18 @@
     - `6912002310` gives full `ok`, and `6912001000` gives full `unknown`;
     - `hsHeading('6912').subs` is `['691200']`, and `hsHeading('6115').subs.length` is 9;
     - with no index, the result is `{known:null}`.
-- [ ] 2.2 Load the index in Node: `scripts/run.js` and `scripts/verify.js` call `PF.setHsIndex(require('../assets/hs_index.json'))` before running. Verify: `cd scripts && node run.js` passes 100%, including the new group.
+- [x] 2.2 Load the index in Node: `scripts/run.js` and `scripts/verify.js` call `PF.setHsIndex(require('../assets/hs_index.json'))` before running. Verify: `cd scripts && node run.js` passes 100%, including the new group.
 
 ## 3. Engine: R-01 hints, existence issue, full-code advisory
 
-- [ ] 3.1 R-01 5-digit hint (spec "Leading-zero recommendation for 5-digit number cells"). In the R-01 detail/fix strings only (`engine.js` ~lines 551–556), when `numericCell && digits.length === 5` and `'0'+digits` is known:
+- [x] 3.1 R-01 5-digit hint (spec "Leading-zero recommendation for 5-digit number cells"). In the R-01 detail/fix strings only (`engine.js` ~lines 551–556), when `numericCell && digits.length === 5` and `'0'+digits` is known:
   - recommend it with its description (push to `n.hsRec`), and keep the words "leading zero" and "store the code as text";
   - otherwise keep today's text.
   - Do not change the R-01 status logic.
 
   Verify: tests show that number `90111` gives R-01 `fail`, with fix text containing `090111` and "Coffee, not roasted"; number `30211` still matches `/leading zero/` (existing test C4); and number `99999` gives the generic text.
-- [ ] 3.0 Recommendation carrier (spec "HS codes are never corrected automatically"). In `normaliseBooking()`, give each item `n.hsRec = []`, a list of `{ code, desc, why }`. No engine function may assign to `n.hs.digits` or `n.hs.raw` from a lookup. Verify: a test runs every HS test case and asserts `n.hs.digits` equals the input's digits after formatting removal (dots, spaces, `.0`, "HS" prefix), never padded, trimmed or replaced.
-- [ ] 3.1b Leading-zero recommendation for 7/9-digit number cells (spec "Leading-zero recommendation for 7 and 9 digit number cells"). In `normaliseBooking()` after `normHS`, when `numericCell` is set, `digits.length` is 7 or 9, and `hsLookup('0'+digits).known` is true:
+- [x] 3.0 Recommendation carrier (spec "HS codes are never corrected automatically"). In `normaliseBooking()`, give each item `n.hsRec = []`, a list of `{ code, desc, why }`. No engine function may assign to `n.hs.digits` or `n.hs.raw` from a lookup. Verify: a test runs every HS test case and asserts `n.hs.digits` equals the input's digits after formatting removal (dots, spaces, `.0`, "HS" prefix), never padded, trimmed or replaced.
+- [x] 3.1b Leading-zero recommendation for 7/9-digit number cells (spec "Leading-zero recommendation for 7 and 9 digit number cells"). In `normaliseBooking()` after `normHS`, when `numericCell` is set, `digits.length` is 7 or 9, and `hsLookup('0'+digits).known` is true:
   - push `{ code: '0'+digits, desc, why: 'leading zero dropped by the spreadsheet' }` to `n.hsRec`;
   - in `evaluate()`, add one Advisory whose text names what the code reads as now (or "not in the UK tariff"), recommends the padded code with its description, and says "store codes as text";
   - skip the plain existence Advisory (task 3.3) for that item so there is never a second one.
@@ -62,19 +62,19 @@
   - number `901110000` gives R-01 `pass`, no data issue, the same status as without the check, exactly one HS Advisory mentioning "microscopes" and recommending `0901110000`, `hs.digits === '901110000'`, and `hsRec[0].code === '0901110000'`;
   - number `902400000` gives exactly one HS Advisory recommending `0902400000` and no data issue;
   - text `'901110000'` gives an empty `hsRec`.
-- [ ] 3.2 R-01 4-digit hint (spec "Heading hint"):
+- [x] 3.2 R-01 4-digit hint (spec "Heading hint"):
   - when the code has exactly 4 digits and `hsHeading` is known, add the heading description plus either "recommended 6-digit code: X" (one subheading, pushed to `n.hsRec`) or "it has N subheadings" (more than one; no single recommendation);
   - when the heading is unknown, say it is not in the UK tariff.
 
   Verify: tests show `6912` gives fix text containing `691200`, `6115` gives "9 subheadings", and `9999` gives "not in the UK tariff", all with R-01 `fail`.
-- [ ] 3.3 Existence Advisory (spec "HS subheading existence check"). In `evaluate()` next to the existing HS advisories (~line 657), for codes with no letters and ≥ 6 digits whose first 6 digits are unknown, push one advisory per item. Do not use `amber()` or `red()`.
+- [x] 3.3 Existence Advisory (spec "HS subheading existence check"). In `evaluate()` next to the existing HS advisories (~line 657), for codes with no letters and ≥ 6 digits whose first 6 digits are unknown, push one advisory per item. Do not use `amber()` or `red()`.
   - The text names the SKU and code, plus the heading and its subheading count when the heading is known; otherwise it says the heading is not in the tariff and points to trade-tariff.service.gov.uk.
   - Skip this when no index is loaded.
 
   Verify: tests show `999999` gives exactly one HS Advisory, no data issue, and an unchanged booking status (Green for an otherwise clean booking); `850700` gives an Advisory mentioning 7 subheadings; items `691200` + `999999` give one Advisory naming only the second SKU; and calling `evaluate` twice on the same normalised booking gives the same advisories.
-- [ ] 3.4 Full-code advisory (spec "UK commodity code check"). In `evaluate()` next to the existing >10-digit advisory (~line 657), for exactly 8 or 10 digit codes whose first 6 digits are known and whose `full === 'unknown'`, push one advisory naming the valid HS-6 and the unknown full code.
+- [x] 3.4 Full-code advisory (spec "UK commodity code check"). In `evaluate()` next to the existing >10-digit advisory (~line 657), for exactly 8 or 10 digit codes whose first 6 digits are known and whose `full === 'unknown'`, push one advisory naming the valid HS-6 and the unknown full code.
   - Verify: tests show `6912002310` gives no advisory; `6912001000` gives one advisory with R-01 `pass` and no data issue; and the existing test "12-digit code → pass, with advisory" (`advisories.length === 1`) still passes.
-- [ ] 3.5 Run the full suites and update docs.
+- [x] 3.5 Run the full suites and update docs.
   - Verify: `cd scripts && node run.js` passes 100%, and `node verify.js` still matches all 20 bookings in the "Expected results" sheet with no status change.
   - Update the R-01 row and the "Data-quality checks" list in `references/logic.md` §4, and add rows for `90111`, `6912`, `6115`, `999999`, `850700` and `6912001000` to `references/test-scenarios.md` section C, with their expected outcomes.
 
