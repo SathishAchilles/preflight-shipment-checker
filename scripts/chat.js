@@ -1,4 +1,4 @@
-/* Preflight chat — turns plain-language messages into booking updates. Pure; depends on PF (engine). */
+/* CargoPass chat — turns plain-language messages into booking updates. Pure; depends on PF (engine). */
 (function (root) {
 'use strict';
 const PF = root.PF || (typeof require !== 'undefined' ? require('./engine.js') : null);
@@ -430,7 +430,7 @@ function checkDiff(prev, next) {
   next.checks.forEach(c => { const p = prev.checks.find(x => x.id === c.id); if (p && p.status !== c.status) out.push({ id: c.id, from: p.status, to: c.status, sev: c.sev }); });
   return out;
 }
-function refFor(st) { let h = 0; const s = JSON.stringify(st.booking); for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return 'PF-' + (h % 900000 + 100000); }
+function refFor(st) { let h = 0; const s = JSON.stringify(st.booking); for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return 'CP-' + (h % 900000 + 100000); }
 
 /** One conversational turn. Returns {st, reply:{parts:[...], ask, chips, showReport, diff, changes, derived}} */
 function turn(stIn, text, today) {
