@@ -219,6 +219,35 @@ function runTests(PF, CHAT) {
   T('Outcomes', 'Avoided cost: only one bound entered → used for both; no inputs → £0 and no lines', () => { const o = PF.outcomes([ev(b => b.items[0].hs = 6912)], [ev()]); const a = PF.avoidedCost(o, { border: { high: 800 } }); const z = PF.avoidedCost(o, {}); return expect(a.low === 800 && a.high === 800 && z.lines.length === 0 && z.high === 0, JSON.stringify(a)); });
   T('Outcomes', 'At stake as uploaded counts every stop, fixed or not', () => { const o = PF.outcomes([ev(b => b.items[0].hs = 6912), ev(b => b.gross = 1800)], [ev(), ev(b => b.gross = 1800)]); const c = PF.avoidedCost(o, { border: { low: 500 }, collection: { low: 200 } }, 'before'); return expect(c.low === 700 && PF.avoidedCost(o, { border: { low: 500 }, collection: { low: 200 } }).low === 500, JSON.stringify(c)); });
 
+  // ---------- Road-freight warnings ----------
+  const rw = (desc, dest = 'Germany', x = {}) => PF.roadWarnings({ destCountry: dest, items: [{ sku: 'S1', description: desc, upc: x.upc ?? 10, unitWeight: x.uw ?? 0.3 }] });
+  const rules = (desc, dest, x) => rw(desc, dest, x).map(w => w.rule || w.title);
+  const pos = [['Beef jerky 100g', 'Germany', 'animal'], ['Smoked salmon fillets', 'France', 'animal'], ['Cheddar cheese 200g', 'Netherlands', 'animal'], ['Milk chocolate bar', 'Germany', 'composite'], ['Dog food 2kg', 'France', 'petfood'],
+    ['Potting compost 40L', 'Germany', 'soil'], ['Potted plant', 'France', 'plants'], ['Elephant ivory carving', 'Germany', 'cites'], ['Python skin handbag', 'France', 'cites'], ['Air rifle', 'Netherlands', 'firearms'],
+    ['Butterfly knife', 'Germany', 'knives'], ['Switchblade', 'Netherlands', 'knives'], ['Knuckle duster', 'Germany', 'blunt'], ['Stun gun', 'Netherlands', 'stun'], ['Pepper spray', 'Germany', 'pepper'], ['Snus pouches', 'France', 'snus'],
+    ['Nicotine pouches mint', 'France', 'pouches'], ['Disposable vape 600 puffs', 'France', 'puffs'], ['Mango e-liquid 10ml', 'Netherlands', 'flavours'], ['Gin 70cl', 'Germany', 'excise'], ['Paracetamol tablets', 'France', 'medicines'],
+    ['Cat fur trim', 'Germany', 'catdogfur'], ['Sealskin boots', 'France', 'seal'], ['Mercury thermometer', 'Netherlands', 'mercury'], ['Thumbcuffs', 'Germany', 'torture'], ['Halon fire extinguisher', 'France', 'ods']];
+  pos.forEach(([d, c, id]) => T('Road warnings', `“${d}” to ${c} → ${id}`, () => { const r = rules(d, c); return expect(r.includes(id), r.join(', ')); }));
+  const neg = ['Vegan cheese slices', 'Cheese grater', 'Butter knife set', 'Peanut butter', 'Egg cup', 'Honey dipper', 'Honey oak shelf', 'Meat thermometer', 'Chicken wire roll', 'Salmon pink scarf', 'Fish tank', 'Plant pot ceramic', 'Artificial plants', 'Plant-based milk', 'Compost bin',
+    'Ivory-coloured cushion', 'Faux croc bag', 'Snake print dress', 'Coral-colour fabric', 'Rosewood effect laminate', 'Glue gun', 'Staple gun', 'Massage gun', 'Water pistol', 'Toy rifle', 'Kitchen knife set', 'Pepper grinder', 'Wine glasses set', 'Beer mug', 'Whisky stones',
+    'Cigarette case', 'Rubber seal ring', 'Silicone sealant', 'Faux fur throw', 'Dog lead', 'Cat bed', 'Pill organiser', 'Medicine cabinet', 'Digital thermometer', 'Christmas tree lights', 'Easter egg hunt kit', 'Cake stand', 'Ginger ale'];
+  neg.forEach(d => T('Road warnings', `Look-alike “${d}” → no ban or permit`, () => { const r = rw(d).filter(w => w.kind !== 'limit'); return expect(!r.length, r.map(w => w.rule).join(', ')); }));
+  T('Road warnings', 'Country-specific: butterfly knife is not flagged for France (unverified there)', () => expect(!rules('Butterfly knife', 'France').length));
+  T('Road warnings', 'Country-specific: nicotine pouches are not flagged for Germany', () => expect(!rules('Nicotine pouches', 'Germany').length));
+  T('Road warnings', 'Negation: “alcohol-free beer” is still beer (excise), “battery-free torch” gives no lithium limit', () => expect(rules('Battery-free torch').length === 0));
+  T('Road warnings', 'Unknown destination → no warnings', () => expect(rw('Beef jerky', 'Spain').length === 0));
+  T('Road warnings', 'Lithium 120 Wh → over the 100 Wh limit (SP 188)', () => { const w = rw('Laptop battery 120Wh')[0]; return expect(w && w.title === 'Over the road limit' && /100 Wh/.test(w.text), w && w.text); });
+  T('Road warnings', 'Power bank 10,000 mAh → about 37 Wh, asks for the Wh on the case', () => { const w = rw('Power bank 10,000mAh')[0]; return expect(w && /37 Wh/.test(w.text) && /single-cell/.test(w.text), w && w.text); });
+  T('Road warnings', 'Aerosol 1.5 L → over the 1 L LQ limit', () => { const w = rw('Aerosol paint 1.5L')[0]; return expect(w && w.title === 'Over the road limit', w && w.text); });
+  T('Road warnings', 'Aerosol 50 ml → not subject (SP 190)', () => { const w = rw('Travel hairspray 50ml aerosol')[0]; return expect(w && /special provision 190/.test(w.text), w && w.text); });
+  T('Road warnings', 'Aerosol cartons: 200 × 0.2 kg = 40 kg → over the 30 kg LQ package limit', () => { const w = rw('Aerosol deodorant 150ml', 'Germany', { upc: 200, uw: 0.2 })[0]; return expect(w && /over the 30 kg/.test(w.text), w && w.text); });
+  T('Road warnings', 'Vodka 40% → not subject by road (SP 145), R-06 still asks to confirm', () => { const w = rw('Vodka 40% 70cl').find(x => x.kind === 'limit'); return expect(w && /special provision 145/.test(w.text) && /R-06/.test(w.text), w && w.text); });
+  T('Road warnings', 'Spirit 75% → regulated, 5 L per bottle as LQ', () => { const w = rw('Overproof rum 75% 70cl').find(x => x.kind === 'limit'); return expect(w && /over 70%/.test(w.text), w && w.text); });
+  T('Road warnings', 'Perfume 6 L → over the 5 L LQ limit', () => { const w = rw('Perfume refill 6L')[0]; return expect(w && w.title === 'Over the road limit', w && w.text); });
+  T('Road warnings', 'Lighter refills → no LQ route (UN 1057)', () => { const w = rw('Lighter refills butane')[0]; return expect(w && /cannot travel as a limited quantity/.test(w.text), w && w.text); });
+  T('Road warnings', 'Parsers: 70cl → 700 ml, 1,5 L → 1500 ml, 10.000mAh → 10000, 99.5Wh → 99.5', () => expect(PF.parseVolumeMl('70cl') === 700 && PF.parseVolumeMl('1,5 L') === 1500 && PF.parseMah('10.000mAh') === 10000 && PF.parseWh('99.5Wh') === 99.5));
+  T('Road warnings', 'Warnings never change the status', () => { const e = ev(b => { b.items[0].description = 'Beef jerky 100g'; }); return expect(e.status === 'Green' && e.warnings.length === 1, `${e.status} ${e.warnings.length}`); });
+
   // ---------- File parsing ----------
   const H1 = ['Booking ID', 'Seller name', 'Origin city', 'Origin country', 'Destination city', 'Destination country', 'Destination type', 'Ready to ship date', 'Seller priority', 'Pallets', 'Cartons', 'Total declared value', 'Currency', 'Total gross weight (kg)', 'Delivery appointment booked'];
   const H2 = ['Booking ID', 'SKU', 'Description', 'HS code', 'Quantity (units)', 'Unit price', 'Units per carton', 'Cartons', 'Unit weight (kg)', 'Country of origin'];
