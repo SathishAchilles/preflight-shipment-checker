@@ -6,7 +6,7 @@
 <title>Preflight — shipment booking and error checker</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Sora:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 /* Night Route: deep navy, glass cards, cyan route light, mono labels. */
@@ -257,6 +257,161 @@ details > summary { cursor: pointer; font-weight: 500; padding: 6px 0; }
 .chev { display: inline-block; width: 16px; color: var(--muted); }
 .btable tr.detail > td { background: rgba(7,11,22,.55); padding: 4px 18px 22px; }
 .btable tr.detail .report { border-top: 0; margin-top: 8px; }
+/* Outcomes panel — Night Route look (always night, in both app themes) */
+.oc { --n-bg: #070B16; --n-bg2: #0B1224; --n-glass: rgba(255,255,255,.035); --n-glass2: rgba(255,255,255,.06); --n-edge: rgba(255,255,255,.08); --n-edge2: rgba(255,255,255,.14);
+  --n-ink: #E8EEF9; --n-mute: #8794AF; --n-dim: #55607A; --n-cyan: #4FD1FF; --n-amber: #FFB547; --n-red: #FF5C7A; --n-pass: #4BE3A4;
+  --n-ease: cubic-bezier(.2,.7,.2,1); --n-mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  position: relative; overflow: hidden; isolation: isolate; color-scheme: dark; margin: 4px 0 18px; padding: 22px 22px 16px; border-radius: 18px; border: 1px solid var(--n-edge);
+  background: var(--n-bg); color: var(--n-ink); font: 300 15px/1.55 'Sora', var(--body); }
+.oc-glow { position: absolute; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(700px 360px at 92% -20%, rgba(79,209,255,.16), transparent 60%), radial-gradient(520px 300px at -10% 110%, rgba(255,181,71,.08), transparent 60%),
+  radial-gradient(rgba(255,255,255,.06) 1px, transparent 1.2px) 0 0 / 16px 16px; }
+.oc .num { font-variant-numeric: tabular-nums; font-weight: 500; }
+.oc-eyebrow { font: 500 11px var(--n-mono); letter-spacing: .16em; text-transform: uppercase; color: var(--n-cyan); display: inline-flex; gap: 10px; align-items: center; }
+.oc-eyebrow::before { content: ""; width: 18px; height: 1px; background: currentColor; }
+.oc-head { display: flex; gap: 20px; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+.oc-head h3 { font: 500 clamp(22px, 3vw, 32px)/1.1 'Sora', var(--body); letter-spacing: -.03em; margin: 10px 0 6px; }
+.oc-head h3 .num { font-weight: 600; }
+.oc-head p { margin: 0; color: var(--n-mute); font-size: 13.5px; max-width: 64ch; }
+.oc .grad { background: linear-gradient(90deg, var(--n-red), #FF9DB0 50%, var(--n-amber)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.oc-ring { position: relative; width: 112px; height: 112px; flex: none; }
+.oc-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.oc-ring circle { fill: none; stroke-width: 6; }
+.oc-ring .bg { stroke: var(--n-edge2); }
+.oc-ring .fg { stroke: var(--n-pass); stroke-linecap: round; stroke-dasharray: 169.6; stroke-dashoffset: 169.6; transition: stroke-dashoffset 1.2s var(--n-ease); filter: drop-shadow(0 0 6px rgba(75,227,164,.5)); }
+.oc-ring-lbl { position: absolute; inset: 0; display: flex; flex-wrap: wrap; align-content: center; justify-content: center; font-size: 22px; line-height: 1.1; }
+.oc-ring-lbl span { color: var(--n-dim); }
+.oc-ring-lbl small { flex-basis: 100%; text-align: center; font: 10px var(--n-mono); letter-spacing: .08em; color: var(--n-mute); text-transform: uppercase; }
+/* Route: uploaded → stops → through */
+.oc-route { position: relative; display: grid; grid-template-columns: .8fr repeat(4, 1fr) .9fr; gap: 10px; padding: 6px 0 4px; }
+.oc-track { position: absolute; left: 6%; right: 6%; top: 28px; height: 2px; pointer-events: none; }
+.oc-track .line { position: absolute; inset: 0; border-radius: 2px; background: linear-gradient(90deg, var(--n-cyan), #A6E9FF 50%, var(--n-amber)); transform-origin: left; transform: scaleX(0); transition: transform 1.6s var(--n-ease); box-shadow: 0 0 12px rgba(79,209,255,.45); }
+.oc.in .oc-track .line { transform: scaleX(1); }
+.oc-track .dot { position: absolute; top: -3px; left: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--n-amber); box-shadow: 0 0 10px var(--n-amber); opacity: 0; }
+.oc.in .oc-track .dot { animation: oc-run 4.8s var(--d) cubic-bezier(.45,0,.25,1) infinite; }
+@keyframes oc-run { 0% { left: 0; opacity: 0; } 8% { opacity: 1; } 92% { opacity: 1; } 100% { left: 100%; opacity: 0; } }
+.oc-stop { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 2px; min-width: 0; outline: none; border-radius: 12px; padding: 0 2px 8px; }
+.oc-stop:focus-visible { box-shadow: 0 0 0 2px var(--n-cyan); }
+.oc-node { position: relative; width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; font-size: 20px; background: var(--n-bg2); border: 1px solid var(--n-edge2); margin-bottom: 6px; transition: border-color .4s, box-shadow .4s; }
+.oc-stop.hit .oc-node { border-color: rgba(255,92,122,.6); color: var(--n-red); box-shadow: 0 0 0 4px rgba(255,92,122,.08); }
+.oc-stop.hit .oc-node::after { content: ""; position: absolute; inset: -1px; border-radius: 50%; border: 1px solid var(--n-red); animation: oc-pulse 2.4s var(--n-ease) infinite; }
+@keyframes oc-pulse { from { transform: scale(1); opacity: .7; } to { transform: scale(1.7); opacity: 0; } }
+.oc-stop.clear .oc-node { border-color: rgba(75,227,164,.6); color: var(--n-pass); box-shadow: 0 0 18px -4px rgba(75,227,164,.6); }
+.oc-end .oc-node { border-color: rgba(79,209,255,.5); color: var(--n-cyan); }
+.oc-end.finish .oc-node { border-color: rgba(255,181,71,.55); color: var(--n-amber); }
+.oc-lbl { font-weight: 500; font-size: 14px; line-height: 1.2; }
+.oc-rules, .oc-sub { font: 10.5px var(--n-mono); color: var(--n-dim); letter-spacing: .04em; }
+.oc-sub { color: var(--n-mute); max-width: 18ch; }
+.oc-barbox { height: 96px; width: 34px; display: flex; align-items: flex-end; margin-top: 8px; }
+.oc-bar { width: 100%; height: calc(var(--b, 0) * 100%); min-height: 0; display: flex; flex-direction: column-reverse; border-radius: 4px 4px 0 0; overflow: hidden; background: rgba(255,92,122,.08); box-shadow: inset 0 0 0 1px rgba(255,92,122,.3);
+  transform-origin: bottom; transform: scaleY(0); transition: transform 1s var(--n-ease), height .8s var(--n-ease); }
+.oc.in .oc-bar { transform: scaleY(1); }
+.oc-stop:nth-of-type(3) .oc-bar { transition-delay: .15s, 0s; } .oc-stop:nth-of-type(4) .oc-bar { transition-delay: .3s, 0s; } .oc-stop:nth-of-type(5) .oc-bar { transition-delay: .45s, 0s; } .oc-stop:nth-of-type(6) .oc-bar { transition-delay: .6s, 0s; }
+.oc-bar i { display: block; flex: 0 0 calc(var(--f, 0) * 100%); transition: flex-basis .8s var(--n-ease); }
+.oc-bar .now { background: linear-gradient(0deg, var(--n-red), #FF8FA5); }
+.oc-bar .fix { background: linear-gradient(0deg, var(--n-pass), #9BF2CF); }
+.oc-bar.split .fix { margin-bottom: 2px; }
+.oc-tag { margin-top: 6px; font: 500 10.5px var(--n-mono); padding: 2px 8px; border-radius: 999px; color: var(--n-dim); border: 1px solid var(--n-edge); }
+.oc-stop.hit .oc-tag { color: var(--n-red); border-color: rgba(255,92,122,.4); background: rgba(255,92,122,.08); }
+.oc-stop.clear .oc-tag { color: var(--n-pass); border-color: rgba(75,227,164,.4); background: rgba(75,227,164,.08); }
+/* Cards */
+.oc-grid { display: grid; grid-template-columns: 1fr 1.25fr; gap: 14px; margin-top: 14px; }
+.oc-card { padding: 16px 18px; border-radius: 14px; background: var(--n-glass); border: 1px solid var(--n-edge); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); min-width: 0; }
+.oc-waffle { display: grid; grid-template-columns: repeat(auto-fill, minmax(30px, 1fr)); gap: 6px; margin: 14px 0 12px; perspective: 600px; }
+.oc-cell { aspect-ratio: 1; border-radius: 6px; display: grid; place-items: center; font: 600 12px var(--n-mono); outline: none; transform: scale(0); opacity: 0;
+  transition: transform .5s var(--n-ease) calc(var(--i) * 28ms), opacity .4s calc(var(--i) * 28ms), background .4s, box-shadow .4s, color .4s; }
+.oc.in .oc-cell { transform: none; opacity: 1; }
+.oc.settled .oc-cell { transition-delay: 0s; }
+.oc-cell:hover, .oc-cell:focus-visible { box-shadow: 0 0 0 2px var(--n-ink); }
+.oc-cell.s-stopped { background: rgba(255,92,122,.18); color: var(--n-red); box-shadow: inset 0 0 0 1px rgba(255,92,122,.55); }
+.oc-cell.s-fixed { background: var(--n-pass); color: var(--n-bg); box-shadow: 0 0 14px -2px rgba(75,227,164,.7); }
+.oc-cell.s-risk { background: rgba(255,181,71,.16); color: var(--n-amber); box-shadow: inset 0 0 0 1px rgba(255,181,71,.5); }
+.oc-cell.s-clean { background: rgba(79,209,255,.14); box-shadow: inset 0 0 0 1px rgba(79,209,255,.35); }
+.oc-cell.flip { animation: oc-flip .7s var(--n-ease); }
+@keyframes oc-flip { 0% { transform: rotateY(0) scale(1); } 50% { transform: rotateY(90deg) scale(1.15); } 100% { transform: rotateY(0) scale(1); } }
+.oc-stack { display: grid; gap: 8px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--n-edge); }
+.oc-srow { display: grid; grid-template-columns: 84px 1fr; gap: 10px; align-items: center; }
+.oc-slbl { font: 10.5px var(--n-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--n-mute); }
+.oc-strack { display: flex; gap: 2px; height: 22px; }
+.oc-strack i { flex: 0 0 calc(var(--w, 0) * (100% - 6px)); display: grid; place-items: center; font: 600 11px var(--n-mono); font-style: normal; border-radius: 4px; min-width: 0; overflow: hidden; outline: none;
+  transform: scaleX(0); transform-origin: left; transition: transform .9s var(--n-ease) .5s, flex-basis .8s var(--n-ease); }
+.oc.in .oc-strack i { transform: none; }
+.oc-srow + .oc-srow .oc-strack i { transition-delay: .8s, 0s; }
+.oc.settled .oc-strack i { transition-delay: 0s; }
+.oc-strack i.zero { flex-basis: 0; margin-left: -2px; }
+.oc-strack i:focus-visible, .oc-strack i:hover { box-shadow: 0 0 0 2px var(--n-ink); }
+.oc-strack .s-stopped { background: rgba(255,92,122,.75); color: var(--n-bg); }
+.oc-strack .s-fixed { background: var(--n-pass); color: var(--n-bg); }
+.oc-strack .s-risk { background: rgba(255,181,71,.8); color: var(--n-bg); }
+.oc-strack .s-clean { background: rgba(79,209,255,.35); color: var(--n-ink); }
+.oc.no-cost .oc-totals { opacity: .35; }
+.oc-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font: 11.5px var(--n-mono); color: var(--n-mute); }
+.oc-legend .lg { display: inline-flex; align-items: center; gap: 6px; }
+.oc-legend .lg i { width: 14px; height: 14px; border-radius: 4px; display: grid; place-items: center; font: 600 9px var(--n-mono); font-style: normal; }
+.oc-legend .lg b { color: var(--n-ink); }
+.lg.s-stopped i { background: rgba(255,92,122,.18); color: var(--n-red); box-shadow: inset 0 0 0 1px rgba(255,92,122,.55); }
+.lg.s-fixed i { background: var(--n-pass); color: var(--n-bg); }
+.lg.s-risk i { background: rgba(255,181,71,.16); color: var(--n-amber); box-shadow: inset 0 0 0 1px rgba(255,181,71,.5); }
+.lg.s-clean i { background: rgba(79,209,255,.14); box-shadow: inset 0 0 0 1px rgba(79,209,255,.35); }
+/* Cost ranges */
+.oc-empty { margin: 10px 0 0; font-size: 13px; color: var(--n-mute); display: none; }
+.oc.no-cost .oc-empty { display: block; }
+.oc-cost { display: grid; gap: 10px; margin: 14px 0 12px; }
+.oc-crow { display: grid; grid-template-columns: minmax(96px, .9fr) auto minmax(80px, 1.4fr) 112px; gap: 10px; align-items: center; font-size: 13px; }
+.oc-clbl { color: var(--n-ink); }
+.oc-inputs { display: inline-flex; gap: 6px; }
+.oc-inputs input { width: 74px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--n-edge2); background: var(--n-glass2); color: var(--n-ink); font: 12.5px var(--n-mono); }
+.oc-inputs input::placeholder { color: var(--n-dim); }
+.oc-inputs input:focus { outline: none; border-color: var(--n-cyan); box-shadow: 0 0 0 3px rgba(79,209,255,.18); }
+.oc-rtrack { position: relative; height: 16px; border-radius: 999px; background: rgba(255,255,255,.05); outline: none; }
+.oc-rtrack:focus-visible { box-shadow: 0 0 0 2px var(--n-cyan); }
+.oc-rtrack i { position: absolute; top: 3px; height: 4px; border-radius: 4px; left: 0; width: calc(var(--hi, 0) * 100%); transition: width .9s var(--n-ease); }
+.oc-rtrack .stake { background: linear-gradient(90deg, rgba(255,92,122,.95) calc(var(--lo, 0) / max(var(--hi, 0), .0001) * 100%), rgba(255,92,122,.35) 0); }
+.oc-rtrack .saved { top: 9px; background: linear-gradient(90deg, var(--n-pass) calc(var(--lo, 0) / max(var(--hi, 0), .0001) * 100%), rgba(75,227,164,.35) 0); box-shadow: 0 0 10px -2px rgba(75,227,164,.6); }
+.oc-val { font: 12px var(--n-mono); color: var(--n-mute); text-align: right; white-space: nowrap; }
+.oc-totals { display: flex; flex-wrap: wrap; gap: 10px 28px; padding-top: 12px; border-top: 1px solid var(--n-edge); }
+.oc-tot span { display: block; font: 10.5px var(--n-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--n-mute); }
+.oc-tot strong { font-weight: 500; font-size: 24px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.oc-tot strong em { font-style: normal; color: var(--n-dim); }
+.oc-tot.stake strong { color: #FF8FA5; } .oc-tot.saved strong { color: var(--n-pass); }
+.oc-note { margin: 10px 0 0; font-size: 12px; color: var(--n-dim); }
+.oc-table { margin-top: 12px; font-size: 13px; color: var(--n-mute); }
+.oc-table summary { font: 11px var(--n-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--n-mute); }
+.oc-table table { border-collapse: collapse; width: 100%; margin-top: 8px; }
+.oc-table th, .oc-table td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--n-edge); }
+.oc-table th { font-weight: 500; color: var(--n-ink); }
+.oc-tip { position: absolute; z-index: 5; max-width: 300px; padding: 7px 10px; border-radius: 8px; background: rgba(11,18,36,.95); border: 1px solid var(--n-edge2); color: var(--n-ink); font: 12px/1.4 var(--n-mono); pointer-events: none; box-shadow: 0 12px 30px -10px rgba(0,0,0,.8); }
+@media (max-width: 900px) { .oc-grid { grid-template-columns: 1fr; } }
+@media (max-width: 640px) {
+  .oc { padding: 18px 14px 12px; }
+  .oc-head { flex-direction: column; align-items: flex-start; }
+  .oc-ring { width: 92px; height: 92px; }
+  .oc-route { grid-template-columns: 1fr; gap: 6px; }
+  .oc-track { left: 27px; right: auto; top: 28px; bottom: 28px; width: 2px; height: auto; }
+  .oc-track .line { transform-origin: top; transform: scaleY(0); background: linear-gradient(180deg, var(--n-cyan), #A6E9FF 50%, var(--n-amber)); }
+  .oc.in .oc-track .line { transform: scaleY(1); }
+  .oc-track .dot { left: -3px; }
+  .oc.in .oc-track .dot { animation-name: oc-run-v; }
+  @keyframes oc-run-v { 0% { top: 0; opacity: 0; } 8% { opacity: 1; } 92% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
+  .oc-stop { display: grid; grid-template-columns: 56px 1fr; grid-template-rows: auto auto auto; column-gap: 12px; row-gap: 1px; text-align: left; align-items: center; padding: 0 0 4px; }
+  .oc-node { grid-row: 1 / span 3; margin: 0; }
+  .oc-barbox { width: 100%; height: 10px; margin-top: 4px; align-items: stretch; }
+  .oc-bar { height: 100%; width: calc(var(--b, 0) * 100%); flex-direction: row; border-radius: 0 4px 4px 0; transform-origin: left; transform: scaleX(0); transition: transform 1s var(--n-ease), width .8s var(--n-ease); }
+  .oc.in .oc-bar { transform: scaleX(1); }
+  .oc-bar.split .fix { margin: 0 0 0 2px; }
+  .oc-bar .fix { background: linear-gradient(90deg, var(--n-pass), #9BF2CF); }
+  .oc-bar .now { background: linear-gradient(90deg, var(--n-red), #FF8FA5); }
+  .oc-bar { flex-direction: row; }
+  .oc-tag { grid-column: 2; justify-self: start; margin-top: 4px; }
+  .oc-end .oc-node { grid-row: 1 / span 2; }
+  .oc-crow { grid-template-columns: 1fr auto; row-gap: 6px; }
+  .oc-clbl { grid-column: 1 / -1; }
+  .oc-rtrack { grid-column: 1 / -1; order: 3; }
+  .oc-val { order: 2; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .oc *, .oc *::before, .oc *::after { animation: none !important; transition: none !important; }
+  .oc-track .dot { display: none; }
+}
 .pill { display: inline-block; font-weight: 500; font-size: 11.5px; padding: 2px 10px; border-radius: 999px; border: 1px solid currentColor; }
 .pill.p-Red { background: var(--red-tint); color: var(--red); } .pill.p-Amber { background: var(--amber-tint); color: var(--amber); } .pill.p-Green { background: var(--green-tint); color: var(--green); }
 .rchip { display: inline-block; font-size: 11px; font-weight: 500; margin: 0 4px 2px 0; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; }
@@ -1399,7 +1554,52 @@ function confirmation(ev, reviewed = 0) {
   return { head, lines, next };
 }
 
-const PF = { CARRIERS, RULES, PRICE_NOTE, CITY_COUNTRY, ORIGIN_CITIES, COO_LIST, PRIORITIES, EXAMPLE_BOOKING, EXAMPLE_ITEM,
+// ---------- Outcomes (reporting only; never changes a booking's status) ----------
+// Where a Red booking would most likely be stopped, in journey order. Each booking counts once, at its first stop.
+const OUTCOME_STAGES = [
+  { id: 'booking',    label: 'Bounced back as filed',     where: 'before booking — the details are missing or contradict each other', rules: [] },
+  { id: 'collection', label: 'Refused at collection',     where: 'at collection — the carrier refuses the pallet or the goods', rules: ['R-05', 'R-06'] },
+  { id: 'border',     label: 'Customs hold',              where: 'at the border — the commercial invoice does not hold up', rules: ['R-01', 'R-02'] },
+  { id: 'receipt',    label: 'Rejected at delivery',      where: 'at delivery — the counts do not match what was declared', rules: ['R-03', 'R-04'] },
+];
+function firstStop(ev) {
+  if (ev.dataIssues.some(d => d.sev === 'Red')) return 'booking';
+  const failed = new Set(ev.checks.filter(c => c.status === 'fail' && c.sev === 'Red').map(c => c.id));
+  const st = OUTCOME_STAGES.find(s => s.rules.some(r => failed.has(r)));
+  return st ? st.id : null;
+}
+// before/after: arrays of evaluate() results in the same booking order (as uploaded, and now with fixes applied).
+function outcomes(before, after = before) {
+  const stages = OUTCOME_STAGES.map(s => ({ ...s, before: [], now: [], avoided: [] }));
+  const byId = Object.fromEntries(stages.map(s => [s.id, s]));
+  const atRisk = [], clean = [], rows = [];
+  before.forEach((ev, i) => {
+    const id = ev.b.id, stop = firstStop(ev), nowEv = after[i] || ev, nowStop = firstStop(nowEv);
+    rows.push({ id, before: stop, now: nowStop, status: nowEv.status });
+    if (stop) { byId[stop].before.push(id); if (!nowStop) byId[stop].avoided.push(id); }
+    if (nowStop) byId[nowStop].now.push(id);
+    if (!stop) (ev.status === 'Amber' ? atRisk : clean).push(id);
+  });
+  const stoppedBefore = stages.reduce((n, s) => n + s.before.length, 0);
+  const stoppedNow = stages.reduce((n, s) => n + s.now.length, 0);
+  const avoided = stages.reduce((n, s) => n + s.avoided.length, 0);
+  return { total: before.length, stages, rows, stoppedBefore, stoppedNow, avoided, atRisk, clean };
+}
+// costs: { stageId: { low, high } } in GBP per booking, entered by the user. Blank stages are left out, never guessed.
+// which: 'avoided' (fixed since upload, the default) or 'before' (everything at stake as uploaded).
+function avoidedCost(out, costs = {}, which = 'avoided') {
+  const lines = [];
+  out.stages.forEach(s => {
+    const c = costs[s.id] || {}, lo = num(c.low), hi = num(c.high), n = s[which].length;
+    const has = v => isNum(v) && v >= 0;
+    if (!n || (!has(lo) && !has(hi))) return;
+    const low = has(lo) ? lo : hi, high = has(hi) ? Math.max(hi, low) : low;
+    lines.push({ stage: s.id, label: s.label, n, low, high, totalLow: low * n, totalHigh: high * n });
+  });
+  return { lines, low: lines.reduce((t, l) => t + l.totalLow, 0), high: lines.reduce((t, l) => t + l.totalHigh, 0) };
+}
+
+const PF = { CARRIERS, RULES, PRICE_NOTE, OUTCOME_STAGES, outcomes, avoidedCost, CITY_COUNTRY, ORIGIN_CITIES, COO_LIST, PRIORITIES, EXAMPLE_BOOKING, EXAMPLE_ITEM,
   num, gbp, kg, fmtNum, fmtDate, fmtDateLong, todayISO, addDays, weekday, isoFromYMD, parseSheetDate, normCountry, normCity, normPriority, normDestType, normYesNo, normHS,
   DG_ADR, scanDG, hsHint, setHsIndex, getHsIndex, hsMeta, hsLookup, hsHeading, hsShort, hsRecommend, hsTokens, hsSuggest, hsSugText, hsMaterialsOf, HS_MATERIALS, parseSheets, normaliseBooking, recommend, palletPlan, evaluate, confirmation, label, isNum, clean, isBlank, MONTHS, DAY_NAMES };
 if (typeof module !== 'undefined' && module.exports) module.exports = PF; else root.PF = PF;
@@ -2090,6 +2290,22 @@ function runTests(PF, CHAT) {
   T('Pallet plan', 'Same booking twice → identical plan', () => { const b = pb({ items: [{ sku: 'B', qty: 120, unitWeight: 2, upc: 6, cartons: 20 }, { sku: 'A', qty: 120, unitWeight: 2, upc: 6, cartons: 20 }] }); return expect(JSON.stringify(PF.palletPlan(b, 'Carrier B')) === JSON.stringify(PF.palletPlan(b, 'Carrier B'))); });
   T('Pallet plan', 'Fewer-pallets advisory: France, 4 pallets, 600 kg on Carrier A → advisory, status unchanged', () => { const e = ev(b => { b.destCity = 'Paris'; b.destCountry = 'France'; b.pallets = 4; b.gross = 600; b.carrierOverride = 'Carrier A'; }); const a = e.advisories.find(x => /^By weight, 2 pallets are enough on Carrier A/.test(x)); return expect(a && /saving £340/.test(a) && /check volume and stacking height/.test(a) && e.status === 'Green', [e.status, a]); });
 
+  // ---------- Outcomes ----------
+  const stageOf = (o, id) => (o.stages.find(s => s.before.includes(id)) || {}).id || null;
+  T('Outcomes', 'Clean booking → clean, no stop', () => { const o = PF.outcomes([ev()]); return expect(o.clean.length === 1 && o.stoppedBefore === 0, JSON.stringify(o.clean)); });
+  T('Outcomes', 'R-05 fail → refused at collection', () => { const o = PF.outcomes([ev(b => { b.gross = 1800; })]); return expect(stageOf(o, 'BK-T') === 'collection', stageOf(o, 'BK-T')); });
+  T('Outcomes', 'R-01 fail → customs hold at the border', () => expect(stageOf(PF.outcomes([ev(b => b.items[0].hs = 6912)]), 'BK-T') === 'border'));
+  T('Outcomes', 'R-04 fail → rejected at delivery', () => expect(stageOf(PF.outcomes([ev(b => b.cartons = 80)]), 'BK-T') === 'receipt'));
+  T('Outcomes', 'R-01 and R-04 together → counted once, at the earlier stop (border)', () => { const o = PF.outcomes([ev(b => { b.items[0].hs = 6912; b.cartons = 80; })]); return expect(o.stoppedBefore === 1 && stageOf(o, 'BK-T') === 'border', o.stoppedBefore); });
+  T('Outcomes', 'Red data issue → bounced back as filed, before any rule stop', () => expect(stageOf(PF.outcomes([ev(b => { b.destCity = 'Paris'; b.items[0].hs = 6912; })]), 'BK-T') === 'booking'));
+  T('Outcomes', 'Amber only (R-08) → at risk, not a stop', () => { const o = PF.outcomes([ev(b => b.appointment = 'No')]); return expect(o.stoppedBefore === 0 && o.atRisk.length === 1); });
+  T('Outcomes', 'Fixed after upload → avoided; still Red → not avoided', () => { const bad = ev(b => b.items[0].hs = 6912); const o1 = PF.outcomes([bad], [ev()]); const o2 = PF.outcomes([bad], [bad]); return expect(o1.avoided === 1 && o1.stoppedNow === 0 && o2.avoided === 0 && o2.stoppedNow === 1, `${o1.avoided}/${o2.avoided}`); });
+  T('Outcomes', 'Per-booking rows keep upload order with before and now stops', () => { const o = PF.outcomes([ev(), ev(b => b.items[0].hs = 6912)], [ev(), ev()]); const r = o.rows; return expect(r.length === 2 && r[0].before === null && r[1].before === 'border' && r[1].now === null && r[1].status === 'Green', JSON.stringify(r)); });
+  T('Outcomes', 'Outcomes never change the booking status', () => { const e = ev(b => b.items[0].hs = 6912); PF.outcomes([e]); return expect(e.status === 'Red'); });
+  T('Outcomes', 'Avoided cost: n × low–high per stage; blank stages left out', () => { const o = PF.outcomes([ev(b => b.items[0].hs = 6912), ev(b => b.items[0].hs = 6912)], [ev(), ev()]); const c = PF.avoidedCost(o, { border: { low: '500', high: 1500 }, collection: { low: 99 } }); return expect(c.lines.length === 1 && c.low === 1000 && c.high === 3000, JSON.stringify(c)); });
+  T('Outcomes', 'Avoided cost: only one bound entered → used for both; no inputs → £0 and no lines', () => { const o = PF.outcomes([ev(b => b.items[0].hs = 6912)], [ev()]); const a = PF.avoidedCost(o, { border: { high: 800 } }); const z = PF.avoidedCost(o, {}); return expect(a.low === 800 && a.high === 800 && z.lines.length === 0 && z.high === 0, JSON.stringify(a)); });
+  T('Outcomes', 'At stake as uploaded counts every stop, fixed or not', () => { const o = PF.outcomes([ev(b => b.items[0].hs = 6912), ev(b => b.gross = 1800)], [ev(), ev(b => b.gross = 1800)]); const c = PF.avoidedCost(o, { border: { low: 500 }, collection: { low: 200 } }, 'before'); return expect(c.low === 700 && PF.avoidedCost(o, { border: { low: 500 }, collection: { low: 200 } }).low === 500, JSON.stringify(c)); });
+
   // ---------- File parsing ----------
   const H1 = ['Booking ID', 'Seller name', 'Origin city', 'Origin country', 'Destination city', 'Destination country', 'Destination type', 'Ready to ship date', 'Seller priority', 'Pallets', 'Cartons', 'Total declared value', 'Currency', 'Total gross weight (kg)', 'Delivery appointment booked'];
   const H2 = ['Booking ID', 'SKU', 'Description', 'HS code', 'Quantity (units)', 'Unit price', 'Units per carton', 'Cartons', 'Unit weight (kg)', 'Country of origin'];
@@ -2626,6 +2842,7 @@ async function loadFiles(files) {
 function ingest(sheets, name) {
   const parsed = PF.parseSheets(sheets, { skipExample: $('#skip-ex').checked });
   fileData = { ...parsed, expected: readExpected(sheets), name, sheets };
+  fileData.baseline = fileData.bookings.map(b => PF.evaluate(b, { today: PF.todayISO() }));
   Object.keys(overrides).forEach(k => delete overrides[k]); Object.keys(reviews).forEach(k => delete reviews[k]);
   audit.length = 0; auditSeen.clear(); openRow = null; filter = 'All';
   renderFile();
@@ -2634,6 +2851,156 @@ function showFileError(msg) { $('#file-results').innerHTML = ''; $('#file-result
 function applyOv(raw, ov) {
   if (!ov) return raw;
   return { ...raw, ...ov.patch, items: raw.items.map((it, i) => ({ ...it, ...((ov.items || {})[i] || {}) })) };
+}
+// ---------- Outcomes panel (reporting only; statuses still come from the rulebook) ----------
+// One panel per uploaded file. It stays in the DOM across re-renders, so a fix animates the change instead of replaying everything.
+const COST_KEY = 'pf-outcome-costs';
+let costs = {}; try { costs = JSON.parse(localStorage.getItem(COST_KEY) || '{}') || {}; } catch (e) { costs = {}; }
+function saveCosts() { try { localStorage.setItem(COST_KEY, JSON.stringify(costs)); } catch (e) {} }
+const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const range = (lo, hi) => (lo === hi ? PF.gbp(lo) : `${PF.gbp(lo)}–${PF.gbp(hi)}`);
+function tween(el, to, fmt = String, ms = 900) {
+  const from = +el.dataset.v || 0; el.dataset.v = to;
+  if (calm() || from === to) { el.textContent = fmt(to); return; }
+  const t0 = performance.now();
+  const step = t => { const k = Math.min(1, (t - t0) / ms), e = 1 - Math.pow(1 - k, 3); el.textContent = fmt(Math.round(from + (to - from) * e)); if (k < 1) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+}
+const OC_STATE = { stopped: { word: 'Stopped', glyph: '✕' }, fixed: { word: 'Fixed', glyph: '✓' }, risk: { word: 'Need a look', glyph: '!' }, clean: { word: 'Clean', glyph: '' } };
+function ocState(r) { return r.now ? 'stopped' : r.before ? 'fixed' : r.status === 'Amber' ? 'risk' : 'clean'; }
+function outcomesPanel() {
+  if (fileData.oc) return fileData.oc;
+  const stageById = Object.fromEntries(PF.OUTCOME_STAGES.map(st => [st.id, st]));
+  const n = () => h('b', { class: 'num', 'data-v': 0 }, '0');
+  // Header: headline numbers + fixed ring
+  const hStopped = n(), hTotal = n(), hFixed = n(), hOf = n();
+  const ring = h('div', { class: 'oc-ring', html: '<svg viewBox="0 0 64 64" aria-hidden="true"><circle class="bg" cx="32" cy="32" r="27"/><circle class="fg" cx="32" cy="32" r="27"/></svg>' });
+  const ringFg = ring.querySelector('.fg');
+  ring.append(h('div', { class: 'oc-ring-lbl' }, hFixed, h('span', null, ' / '), hOf, h('small', null, 'stops fixed')));
+  // Route: uploaded → four stops → through
+  const startN = n(), endN = n(), endSub = h('span', { class: 'oc-sub' });
+  const stops = PF.OUTCOME_STAGES.map(st => {
+    const cnt = n(), nowI = h('i', { class: 'now' }), fixI = h('i', { class: 'fix' }), bar = h('div', { class: 'oc-bar' }, nowI, fixI), tag = h('span', { class: 'oc-tag' });
+    const el = h('div', { class: 'oc-stop', tabindex: 0 }, h('span', { class: 'oc-node' }, cnt), h('span', { class: 'oc-lbl' }, st.label), h('span', { class: 'oc-rules' }, st.rules.length ? st.rules.join(' · ') : 'Red data issues'), h('div', { class: 'oc-barbox' }, bar), tag);
+    return { st, el, cnt, bar, nowI, fixI, tag };
+  });
+  const route = h('div', { class: 'oc-route' },
+    h('div', { class: 'oc-track', 'aria-hidden': 'true' }, h('i', { class: 'line' }), [0, 1, 2].map(i => h('i', { class: 'dot', style: `--d:${i * 1.6}s` }))),
+    h('div', { class: 'oc-stop oc-end start' }, h('span', { class: 'oc-node' }, startN), h('span', { class: 'oc-lbl' }, 'Uploaded'), h('span', { class: 'oc-rules' }, 'bookings in the file')),
+    stops.map(x => x.el),
+    h('div', { class: 'oc-stop oc-end finish' }, h('span', { class: 'oc-node' }, endN), h('span', { class: 'oc-lbl' }, 'Get through now'), endSub));
+  // Waffle: one cell per booking, in upload order
+  const waffle = h('div', { class: 'oc-waffle', role: 'list', 'aria-label': 'Every booking, one cell each' });
+  const legendN = {}; const legend = h('div', { class: 'oc-legend' }, Object.entries(OC_STATE).map(([k, v]) => h('span', { class: 'lg s-' + k }, h('i', null, v.glyph), v.word, ' ', (legendN[k] = n()))));
+  // Stacked bars: where every booking stands, as uploaded and now
+  const segRow = name => { const segs = Object.fromEntries(Object.keys(OC_STATE).map(k => [k, h('i', { class: 's-' + k, tabindex: 0 })])); return { segs, el: h('div', { class: 'oc-srow' }, h('span', { class: 'oc-slbl' }, name), h('div', { class: 'oc-strack' }, Object.values(segs))) }; };
+  const sBefore = segRow('As uploaded'), sNow = segRow('Now');
+  // Cost chart (your figures)
+  const costRows = PF.OUTCOME_STAGES.map(st => {
+    const inp = k => h('input', { type: 'number', min: 0, step: 50, inputmode: 'decimal', placeholder: k === 'low' ? 'low £' : 'high £', value: (costs[st.id] || {})[k] ?? '', 'aria-label': `${st.label}: ${k} cost per stopped booking, £`,
+      oninput: e => { costs[st.id] = { ...(costs[st.id] || {}), [k]: e.target.value }; saveCosts(); paintCost(); } });
+    const stake = h('i', { class: 'stake' }), saved = h('i', { class: 'saved' }), val = h('span', { class: 'oc-val' }, '—');
+    return { st, el: h('div', { class: 'oc-crow' }, h('span', { class: 'oc-clbl' }, st.label), h('span', { class: 'oc-inputs' }, inp('low'), inp('high')), h('div', { class: 'oc-rtrack', tabindex: 0 }, stake, saved), val), stake, saved, val };
+  });
+  const totStakeLo = n(), totStakeHi = n(), totSavedLo = n(), totSavedHi = n();
+  const totals = h('div', { class: 'oc-totals' },
+    h('div', { class: 'oc-tot stake' }, h('span', null, 'At stake as uploaded'), h('strong', null, '£', totStakeLo, h('em', null, '–£'), totStakeHi)),
+    h('div', { class: 'oc-tot saved' }, h('span', null, 'Avoided by fixes so far'), h('strong', null, '£', totSavedLo, h('em', null, '–£'), totSavedHi)));
+  const costEmpty = h('p', { class: 'oc-empty' }, 'Type what one stopped booking costs you at each stage (storage, re-delivery, demurrage, a missed slot). No default figures.');
+  // Data table (the accessible view of every chart)
+  const tbody = h('tbody');
+  const tip = h('div', { class: 'oc-tip', hidden: true });
+  const el = h('section', { class: 'oc', 'aria-label': 'Outcomes' },
+    h('div', { class: 'oc-glow', 'aria-hidden': 'true' }),
+    h('header', { class: 'oc-head' },
+      h('div', null, h('span', { class: 'oc-eyebrow' }, 'Outcomes · as uploaded → now'),
+        h('h3', null, hStopped, ' of ', hTotal, ' bookings would have been ', h('span', { class: 'grad' }, 'stopped')),
+        h('p', null, 'Each booking counts once, at the first place it would most likely be stopped. Reporting only — Red, Amber and Green still come from the rulebook.')),
+      ring),
+    route,
+    h('div', { class: 'oc-grid' },
+      h('div', { class: 'oc-card' }, h('span', { class: 'oc-eyebrow' }, 'Every booking, once'), waffle, legend,
+        h('div', { class: 'oc-stack' }, sBefore.el, sNow.el)),
+      h('div', { class: 'oc-card' }, h('span', { class: 'oc-eyebrow' }, 'Cost estimate · your figures'), costEmpty, h('div', { class: 'oc-cost' }, costRows.map(r => r.el)), totals,
+        h('p', { class: 'oc-note' }, 'Estimate — from your inputs, not measured. Only bookings fixed here count as avoided. Kept separate from carrier prices. Saved in this browser only.'))),
+    h('details', { class: 'oc-table' }, h('summary', null, 'Data table'),
+      h('table', null, h('thead', null, h('tr', null, h('th', null, 'Stage'), h('th', null, 'Stopped as uploaded'), h('th', null, 'Still stopped'), h('th', null, 'Fixed'), h('th', null, 'Bookings'))), tbody)),
+    tip);
+  // Tooltip shared by every mark
+  const showTip = t => { const txt = t.dataset.tip; if (!txt) return; tip.textContent = txt; tip.hidden = false; const a = t.getBoundingClientRect(), p = el.getBoundingClientRect(); tip.style.left = Math.max(8, Math.min(p.width - tip.offsetWidth - 8, a.left - p.left + a.width / 2 - tip.offsetWidth / 2)) + 'px'; tip.style.top = (a.top - p.top - tip.offsetHeight - 8) + 'px'; };
+  ['pointerover', 'focusin'].forEach(ev => el.addEventListener(ev, e => { const t = e.target.closest('[data-tip]'); if (t) showTip(t); }));
+  ['pointerout', 'focusout'].forEach(ev => el.addEventListener(ev, e => { if (e.target.closest('[data-tip]')) tip.hidden = true; }));
+  let o = null, first = true;
+  function paintCost() {
+    if (!o) return;
+    const stake = PF.avoidedCost(o, costs, 'before'), saved = PF.avoidedCost(o, costs);
+    const max = Math.max(1, ...stake.lines.map(l => l.totalHigh));
+    costRows.forEach(r => {
+      const l = stake.lines.find(x => x.stage === r.st.id), sv = saved.lines.find(x => x.stage === r.st.id);
+      r.stake.style.setProperty('--lo', l ? l.totalLow / max : 0); r.stake.style.setProperty('--hi', l ? l.totalHigh / max : 0);
+      r.saved.style.setProperty('--lo', sv ? sv.totalLow / max : 0); r.saved.style.setProperty('--hi', sv ? sv.totalHigh / max : 0);
+      r.val.textContent = l ? range(l.totalLow, l.totalHigh) : '—';
+      r.el.querySelector('.oc-rtrack').setAttribute('data-tip', l ? `${r.st.label}: ${l.n} × ${range(l.low, l.high)} = ${range(l.totalLow, l.totalHigh)} at stake${sv ? `; ${range(sv.totalLow, sv.totalHigh)} avoided` : ''}` : `${r.st.label}: no figure entered`);
+    });
+    const fmt = v => PF.fmtNum(v, 0);
+    tween(totStakeLo, stake.low, fmt); tween(totStakeHi, stake.high, fmt); tween(totSavedLo, saved.low, fmt); tween(totSavedHi, saved.high, fmt);
+    el.classList.toggle('no-cost', !stake.lines.length);
+  }
+  function update(rows) {
+    o = PF.outcomes(fileData.baseline, rows.map(r => r.ev));
+    const apply = () => {
+      tween(hStopped, o.stoppedBefore); tween(hTotal, o.total); tween(hFixed, o.avoided); tween(hOf, o.stoppedBefore);
+      ringFg.style.strokeDashoffset = String(169.6 * (1 - (o.stoppedBefore ? o.avoided / o.stoppedBefore : 0)));
+      tween(startN, o.total); tween(endN, o.total - o.stoppedNow);
+      endSub.textContent = `${o.atRisk.length} need a look · ${o.clean.length} clean${o.avoided ? ` · ${o.avoided} fixed` : ''}`;
+      const max = Math.max(1, ...o.stages.map(s => s.before.length));
+      stops.forEach((x, i) => {
+        const s = o.stages[i], b = s.before.length;
+        tween(x.cnt, b);
+        x.bar.style.setProperty('--b', b / max);
+        x.nowI.style.setProperty('--f', b ? s.now.length / b : 0); x.fixI.style.setProperty('--f', b ? s.avoided.length / b : 0);
+        x.bar.classList.toggle('split', s.now.length > 0 && s.avoided.length > 0);
+        x.el.classList.toggle('hit', s.now.length > 0); x.el.classList.toggle('clear', b > 0 && !s.now.length);
+        x.tag.textContent = !b ? 'none' : s.now.length ? `${s.now.length} still stopped` : 'all fixed';
+        x.el.setAttribute('data-tip', b ? `${x.st.label} — ${x.st.where}: ${s.before.join(', ')}${s.avoided.length ? ` (fixed: ${s.avoided.join(', ')})` : ''}` : `${x.st.label}: no bookings`);
+      });
+      // Waffle cells
+      const cells = waffle.children;
+      o.rows.forEach((r, i) => {
+        let c = cells[i]; if (!c) { c = h('span', { class: 'oc-cell', role: 'listitem', tabindex: 0, style: `--i:${i}` }, h('b')); waffle.append(c); }
+        const st = ocState(r);
+        if (c.dataset.state && c.dataset.state !== st && !calm()) { c.classList.remove('flip'); void c.offsetWidth; c.classList.add('flip'); }
+        c.dataset.state = st; c.className = c.className.replace(/\bs-\w+/g, '').trim() + ' s-' + st;
+        c.firstChild.textContent = OC_STATE[st].glyph;
+        const stage = r.before ? stageById[r.before].label : null;
+        c.setAttribute('data-tip', `${r.id} · ${OC_STATE[st].word}${stage ? ` · ${stage.toLowerCase()}` : ''}`);
+        c.setAttribute('aria-label', c.dataset.tip);
+      });
+      while (cells.length > o.rows.length) cells[cells.length - 1].remove();
+      const count = k => o.rows.filter(r => ocState(r) === k).length;
+      Object.keys(OC_STATE).forEach(k => tween(legendN[k], count(k)));
+      const was = { stopped: o.stoppedBefore, fixed: 0, risk: o.atRisk.length, clean: o.clean.length };
+      Object.keys(OC_STATE).forEach(k => {
+        [[sBefore, was[k], 'as uploaded'], [sNow, count(k), 'now']].forEach(([row, v, when]) => {
+          const seg = row.segs[k]; seg.style.setProperty('--w', o.total ? v / o.total : 0); seg.classList.toggle('zero', !v);
+          seg.setAttribute('data-tip', `${OC_STATE[k].word} ${when}: ${v} of ${o.total}`); seg.setAttribute('aria-label', seg.dataset.tip);
+          seg.textContent = v && v / o.total >= 0.08 ? String(v) : '';
+        });
+      });
+      tbody.replaceChildren(...o.stages.map(s => h('tr', null, h('td', null, s.label), h('td', null, String(s.before.length)), h('td', null, String(s.now.length)), h('td', null, String(s.avoided.length)), h('td', null, s.before.join(', ') || '—'))));
+      paintCost();
+    };
+    if (first) {
+      first = false;
+      // Let the zero state paint first, then start the entrance when the panel scrolls into view.
+      const go = () => requestAnimationFrame(() => requestAnimationFrame(() => { el.classList.add('in'); apply(); setTimeout(() => el.classList.add('settled'), 1800); }));
+      if ('IntersectionObserver' in window && !calm()) { const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { io.disconnect(); go(); } }, { threshold: 0.15 }); io.observe(el); }
+      else { el.classList.add('in', 'settled'); apply(); }
+    } else apply();
+    return el;
+  }
+  fileData.oc = { el, update };
+  return fileData.oc;
 }
 function evalAll() { return fileData.bookings.map((b, i) => ({ i, raw: b, ev: PF.evaluate(applyOv(b, overrides[i]), { today: PF.todayISO() }), edited: !!overrides[i] })); }
 function toReview(r) { return r.ev.corrections.filter(c => !(reviews[r.i] || {})[c.id]).length; }
@@ -2670,6 +3037,7 @@ function renderFile() {
     h('button', { class: 'btn', type: 'button', onclick: exportResults, disabled: !rows.length }, 'Export results (.xlsx)')));
   fileData.notices.forEach(n => out.append(h('p', { class: 'notice n-' + n.level }, n.text)));
   if (!rows.length) { out.append(h('p', { class: 'note-warn' }, 'No bookings found under the header row.')); return; }
+  out.append(outcomesPanel().update(rows));
   const exp = fileData.expected;
   const tbody = h('tbody');
   rows.filter(r => filter === 'All' || (filter === 'Review' ? toReview(r) > 0 : filter === 'Advisory' ? r.ev.advisories.length > 0 : r.ev.status === filter)).forEach(r => {

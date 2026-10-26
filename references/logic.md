@@ -77,3 +77,23 @@ Collection = ready date (today if past), moved to Monday if weekend; delivery = 
 - **Intents:** reset, confirm, summary ("what's wrong?"), help. Unserved cities (Munich, Bristol, Spain) → redirect note.
 - **After complete:** every change re-runs checks and lists the diff ("R-05 now passes"). One-click fixes in chat send the equivalent sentence, so chat history stays truthful.
 - **Live panel:** booking sheet with "needed"/"calc" markers; while incomplete, unasked fields show "waiting", not false Reds.
+
+## 8. Outcomes (file tab, reporting only)
+- **First stop per booking** (`outcomes()` in `engine.js`). Each Red booking counts once, at the earliest of:
+  - **bounced back as filed**: any Red data issue;
+  - **refused at collection**: R-05, R-06;
+  - **customs hold**: R-01, R-02;
+  - **rejected at delivery**: R-03, R-04.
+
+  Only `fail` on a Red rule is a stop. `check`, `cannot` and Amber fails count as "need a look", with no £.
+- **Before / now / avoided.** "Before" is the booking as uploaded (`fileData.baseline`, evaluated once at ingest). "Now" includes the fixes applied in this session. "Avoided" means stopped before and not now; a partly fixed booking is still stopped.
+- **Cost estimate** (`avoidedCost()`). The user enters low and high £ per stopped booking for each stage. There are no defaults. Each stage contributes n × low to n × high, and blank or invalid stages are left out. The panel shows "At stake as uploaded" (every stop) and "Avoided by fixes so far". It is always labelled an estimate and is never added to carrier prices. Figures are kept in `localStorage['pf-outcome-costs']`.
+- **Charts** (Night Route look, `outcomesPanel()` in `app.js`):
+  - a route of the stops with before/now bars;
+  - a waffle with one cell per booking;
+  - "As uploaded" and "Now" stacked bars;
+  - a ring for stops fixed;
+  - cost range bars.
+
+  It is built once per file and updated in place, so fixes animate. It honours reduced motion, and a data table repeats every number.
+- **Never changes Red/Amber/Green.** Sample workbook: 12 of 25 stopped (3 / 4 / 3 / 2), 5 need a look, 8 clean.

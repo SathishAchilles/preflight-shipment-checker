@@ -470,6 +470,7 @@ async function loadFiles(files) {
 function ingest(sheets, name) {
   const parsed = PF.parseSheets(sheets, { skipExample: $('#skip-ex').checked });
   fileData = { ...parsed, expected: readExpected(sheets), name, sheets };
+  fileData.baseline = fileData.bookings.map(b => PF.evaluate(b, { today: PF.todayISO() }));
   Object.keys(overrides).forEach(k => delete overrides[k]); Object.keys(reviews).forEach(k => delete reviews[k]);
   audit.length = 0; auditSeen.clear(); openRow = null; filter = 'All';
   renderFile();
@@ -478,6 +479,156 @@ function showFileError(msg) { $('#file-results').innerHTML = ''; $('#file-result
 function applyOv(raw, ov) {
   if (!ov) return raw;
   return { ...raw, ...ov.patch, items: raw.items.map((it, i) => ({ ...it, ...((ov.items || {})[i] || {}) })) };
+}
+// ---------- Outcomes panel (reporting only; statuses still come from the rulebook) ----------
+// One panel per uploaded file. It stays in the DOM across re-renders, so a fix animates the change instead of replaying everything.
+const COST_KEY = 'pf-outcome-costs';
+let costs = {}; try { costs = JSON.parse(localStorage.getItem(COST_KEY) || '{}') || {}; } catch (e) { costs = {}; }
+function saveCosts() { try { localStorage.setItem(COST_KEY, JSON.stringify(costs)); } catch (e) {} }
+const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const range = (lo, hi) => (lo === hi ? PF.gbp(lo) : `${PF.gbp(lo)}–${PF.gbp(hi)}`);
+function tween(el, to, fmt = String, ms = 900) {
+  const from = +el.dataset.v || 0; el.dataset.v = to;
+  if (calm() || from === to) { el.textContent = fmt(to); return; }
+  const t0 = performance.now();
+  const step = t => { const k = Math.min(1, (t - t0) / ms), e = 1 - Math.pow(1 - k, 3); el.textContent = fmt(Math.round(from + (to - from) * e)); if (k < 1) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+}
+const OC_STATE = { stopped: { word: 'Stopped', glyph: '✕' }, fixed: { word: 'Fixed', glyph: '✓' }, risk: { word: 'Need a look', glyph: '!' }, clean: { word: 'Clean', glyph: '' } };
+function ocState(r) { return r.now ? 'stopped' : r.before ? 'fixed' : r.status === 'Amber' ? 'risk' : 'clean'; }
+function outcomesPanel() {
+  if (fileData.oc) return fileData.oc;
+  const stageById = Object.fromEntries(PF.OUTCOME_STAGES.map(st => [st.id, st]));
+  const n = () => h('b', { class: 'num', 'data-v': 0 }, '0');
+  // Header: headline numbers + fixed ring
+  const hStopped = n(), hTotal = n(), hFixed = n(), hOf = n();
+  const ring = h('div', { class: 'oc-ring', html: '<svg viewBox="0 0 64 64" aria-hidden="true"><circle class="bg" cx="32" cy="32" r="27"/><circle class="fg" cx="32" cy="32" r="27"/></svg>' });
+  const ringFg = ring.querySelector('.fg');
+  ring.append(h('div', { class: 'oc-ring-lbl' }, hFixed, h('span', null, ' / '), hOf, h('small', null, 'stops fixed')));
+  // Route: uploaded → four stops → through
+  const startN = n(), endN = n(), endSub = h('span', { class: 'oc-sub' });
+  const stops = PF.OUTCOME_STAGES.map(st => {
+    const cnt = n(), nowI = h('i', { class: 'now' }), fixI = h('i', { class: 'fix' }), bar = h('div', { class: 'oc-bar' }, nowI, fixI), tag = h('span', { class: 'oc-tag' });
+    const el = h('div', { class: 'oc-stop', tabindex: 0 }, h('span', { class: 'oc-node' }, cnt), h('span', { class: 'oc-lbl' }, st.label), h('span', { class: 'oc-rules' }, st.rules.length ? st.rules.join(' · ') : 'Red data issues'), h('div', { class: 'oc-barbox' }, bar), tag);
+    return { st, el, cnt, bar, nowI, fixI, tag };
+  });
+  const route = h('div', { class: 'oc-route' },
+    h('div', { class: 'oc-track', 'aria-hidden': 'true' }, h('i', { class: 'line' }), [0, 1, 2].map(i => h('i', { class: 'dot', style: `--d:${i * 1.6}s` }))),
+    h('div', { class: 'oc-stop oc-end start' }, h('span', { class: 'oc-node' }, startN), h('span', { class: 'oc-lbl' }, 'Uploaded'), h('span', { class: 'oc-rules' }, 'bookings in the file')),
+    stops.map(x => x.el),
+    h('div', { class: 'oc-stop oc-end finish' }, h('span', { class: 'oc-node' }, endN), h('span', { class: 'oc-lbl' }, 'Get through now'), endSub));
+  // Waffle: one cell per booking, in upload order
+  const waffle = h('div', { class: 'oc-waffle', role: 'list', 'aria-label': 'Every booking, one cell each' });
+  const legendN = {}; const legend = h('div', { class: 'oc-legend' }, Object.entries(OC_STATE).map(([k, v]) => h('span', { class: 'lg s-' + k }, h('i', null, v.glyph), v.word, ' ', (legendN[k] = n()))));
+  // Stacked bars: where every booking stands, as uploaded and now
+  const segRow = name => { const segs = Object.fromEntries(Object.keys(OC_STATE).map(k => [k, h('i', { class: 's-' + k, tabindex: 0 })])); return { segs, el: h('div', { class: 'oc-srow' }, h('span', { class: 'oc-slbl' }, name), h('div', { class: 'oc-strack' }, Object.values(segs))) }; };
+  const sBefore = segRow('As uploaded'), sNow = segRow('Now');
+  // Cost chart (your figures)
+  const costRows = PF.OUTCOME_STAGES.map(st => {
+    const inp = k => h('input', { type: 'number', min: 0, step: 50, inputmode: 'decimal', placeholder: k === 'low' ? 'low £' : 'high £', value: (costs[st.id] || {})[k] ?? '', 'aria-label': `${st.label}: ${k} cost per stopped booking, £`,
+      oninput: e => { costs[st.id] = { ...(costs[st.id] || {}), [k]: e.target.value }; saveCosts(); paintCost(); } });
+    const stake = h('i', { class: 'stake' }), saved = h('i', { class: 'saved' }), val = h('span', { class: 'oc-val' }, '—');
+    return { st, el: h('div', { class: 'oc-crow' }, h('span', { class: 'oc-clbl' }, st.label), h('span', { class: 'oc-inputs' }, inp('low'), inp('high')), h('div', { class: 'oc-rtrack', tabindex: 0 }, stake, saved), val), stake, saved, val };
+  });
+  const totStakeLo = n(), totStakeHi = n(), totSavedLo = n(), totSavedHi = n();
+  const totals = h('div', { class: 'oc-totals' },
+    h('div', { class: 'oc-tot stake' }, h('span', null, 'At stake as uploaded'), h('strong', null, '£', totStakeLo, h('em', null, '–£'), totStakeHi)),
+    h('div', { class: 'oc-tot saved' }, h('span', null, 'Avoided by fixes so far'), h('strong', null, '£', totSavedLo, h('em', null, '–£'), totSavedHi)));
+  const costEmpty = h('p', { class: 'oc-empty' }, 'Type what one stopped booking costs you at each stage (storage, re-delivery, demurrage, a missed slot). No default figures.');
+  // Data table (the accessible view of every chart)
+  const tbody = h('tbody');
+  const tip = h('div', { class: 'oc-tip', hidden: true });
+  const el = h('section', { class: 'oc', 'aria-label': 'Outcomes' },
+    h('div', { class: 'oc-glow', 'aria-hidden': 'true' }),
+    h('header', { class: 'oc-head' },
+      h('div', null, h('span', { class: 'oc-eyebrow' }, 'Outcomes · as uploaded → now'),
+        h('h3', null, hStopped, ' of ', hTotal, ' bookings would have been ', h('span', { class: 'grad' }, 'stopped')),
+        h('p', null, 'Each booking counts once, at the first place it would most likely be stopped. Reporting only — Red, Amber and Green still come from the rulebook.')),
+      ring),
+    route,
+    h('div', { class: 'oc-grid' },
+      h('div', { class: 'oc-card' }, h('span', { class: 'oc-eyebrow' }, 'Every booking, once'), waffle, legend,
+        h('div', { class: 'oc-stack' }, sBefore.el, sNow.el)),
+      h('div', { class: 'oc-card' }, h('span', { class: 'oc-eyebrow' }, 'Cost estimate · your figures'), costEmpty, h('div', { class: 'oc-cost' }, costRows.map(r => r.el)), totals,
+        h('p', { class: 'oc-note' }, 'Estimate — from your inputs, not measured. Only bookings fixed here count as avoided. Kept separate from carrier prices. Saved in this browser only.'))),
+    h('details', { class: 'oc-table' }, h('summary', null, 'Data table'),
+      h('table', null, h('thead', null, h('tr', null, h('th', null, 'Stage'), h('th', null, 'Stopped as uploaded'), h('th', null, 'Still stopped'), h('th', null, 'Fixed'), h('th', null, 'Bookings'))), tbody)),
+    tip);
+  // Tooltip shared by every mark
+  const showTip = t => { const txt = t.dataset.tip; if (!txt) return; tip.textContent = txt; tip.hidden = false; const a = t.getBoundingClientRect(), p = el.getBoundingClientRect(); tip.style.left = Math.max(8, Math.min(p.width - tip.offsetWidth - 8, a.left - p.left + a.width / 2 - tip.offsetWidth / 2)) + 'px'; tip.style.top = (a.top - p.top - tip.offsetHeight - 8) + 'px'; };
+  ['pointerover', 'focusin'].forEach(ev => el.addEventListener(ev, e => { const t = e.target.closest('[data-tip]'); if (t) showTip(t); }));
+  ['pointerout', 'focusout'].forEach(ev => el.addEventListener(ev, e => { if (e.target.closest('[data-tip]')) tip.hidden = true; }));
+  let o = null, first = true;
+  function paintCost() {
+    if (!o) return;
+    const stake = PF.avoidedCost(o, costs, 'before'), saved = PF.avoidedCost(o, costs);
+    const max = Math.max(1, ...stake.lines.map(l => l.totalHigh));
+    costRows.forEach(r => {
+      const l = stake.lines.find(x => x.stage === r.st.id), sv = saved.lines.find(x => x.stage === r.st.id);
+      r.stake.style.setProperty('--lo', l ? l.totalLow / max : 0); r.stake.style.setProperty('--hi', l ? l.totalHigh / max : 0);
+      r.saved.style.setProperty('--lo', sv ? sv.totalLow / max : 0); r.saved.style.setProperty('--hi', sv ? sv.totalHigh / max : 0);
+      r.val.textContent = l ? range(l.totalLow, l.totalHigh) : '—';
+      r.el.querySelector('.oc-rtrack').setAttribute('data-tip', l ? `${r.st.label}: ${l.n} × ${range(l.low, l.high)} = ${range(l.totalLow, l.totalHigh)} at stake${sv ? `; ${range(sv.totalLow, sv.totalHigh)} avoided` : ''}` : `${r.st.label}: no figure entered`);
+    });
+    const fmt = v => PF.fmtNum(v, 0);
+    tween(totStakeLo, stake.low, fmt); tween(totStakeHi, stake.high, fmt); tween(totSavedLo, saved.low, fmt); tween(totSavedHi, saved.high, fmt);
+    el.classList.toggle('no-cost', !stake.lines.length);
+  }
+  function update(rows) {
+    o = PF.outcomes(fileData.baseline, rows.map(r => r.ev));
+    const apply = () => {
+      tween(hStopped, o.stoppedBefore); tween(hTotal, o.total); tween(hFixed, o.avoided); tween(hOf, o.stoppedBefore);
+      ringFg.style.strokeDashoffset = String(169.6 * (1 - (o.stoppedBefore ? o.avoided / o.stoppedBefore : 0)));
+      tween(startN, o.total); tween(endN, o.total - o.stoppedNow);
+      endSub.textContent = `${o.atRisk.length} need a look · ${o.clean.length} clean${o.avoided ? ` · ${o.avoided} fixed` : ''}`;
+      const max = Math.max(1, ...o.stages.map(s => s.before.length));
+      stops.forEach((x, i) => {
+        const s = o.stages[i], b = s.before.length;
+        tween(x.cnt, b);
+        x.bar.style.setProperty('--b', b / max);
+        x.nowI.style.setProperty('--f', b ? s.now.length / b : 0); x.fixI.style.setProperty('--f', b ? s.avoided.length / b : 0);
+        x.bar.classList.toggle('split', s.now.length > 0 && s.avoided.length > 0);
+        x.el.classList.toggle('hit', s.now.length > 0); x.el.classList.toggle('clear', b > 0 && !s.now.length);
+        x.tag.textContent = !b ? 'none' : s.now.length ? `${s.now.length} still stopped` : 'all fixed';
+        x.el.setAttribute('data-tip', b ? `${x.st.label} — ${x.st.where}: ${s.before.join(', ')}${s.avoided.length ? ` (fixed: ${s.avoided.join(', ')})` : ''}` : `${x.st.label}: no bookings`);
+      });
+      // Waffle cells
+      const cells = waffle.children;
+      o.rows.forEach((r, i) => {
+        let c = cells[i]; if (!c) { c = h('span', { class: 'oc-cell', role: 'listitem', tabindex: 0, style: `--i:${i}` }, h('b')); waffle.append(c); }
+        const st = ocState(r);
+        if (c.dataset.state && c.dataset.state !== st && !calm()) { c.classList.remove('flip'); void c.offsetWidth; c.classList.add('flip'); }
+        c.dataset.state = st; c.className = c.className.replace(/\bs-\w+/g, '').trim() + ' s-' + st;
+        c.firstChild.textContent = OC_STATE[st].glyph;
+        const stage = r.before ? stageById[r.before].label : null;
+        c.setAttribute('data-tip', `${r.id} · ${OC_STATE[st].word}${stage ? ` · ${stage.toLowerCase()}` : ''}`);
+        c.setAttribute('aria-label', c.dataset.tip);
+      });
+      while (cells.length > o.rows.length) cells[cells.length - 1].remove();
+      const count = k => o.rows.filter(r => ocState(r) === k).length;
+      Object.keys(OC_STATE).forEach(k => tween(legendN[k], count(k)));
+      const was = { stopped: o.stoppedBefore, fixed: 0, risk: o.atRisk.length, clean: o.clean.length };
+      Object.keys(OC_STATE).forEach(k => {
+        [[sBefore, was[k], 'as uploaded'], [sNow, count(k), 'now']].forEach(([row, v, when]) => {
+          const seg = row.segs[k]; seg.style.setProperty('--w', o.total ? v / o.total : 0); seg.classList.toggle('zero', !v);
+          seg.setAttribute('data-tip', `${OC_STATE[k].word} ${when}: ${v} of ${o.total}`); seg.setAttribute('aria-label', seg.dataset.tip);
+          seg.textContent = v && v / o.total >= 0.08 ? String(v) : '';
+        });
+      });
+      tbody.replaceChildren(...o.stages.map(s => h('tr', null, h('td', null, s.label), h('td', null, String(s.before.length)), h('td', null, String(s.now.length)), h('td', null, String(s.avoided.length)), h('td', null, s.before.join(', ') || '—'))));
+      paintCost();
+    };
+    if (first) {
+      first = false;
+      // Let the zero state paint first, then start the entrance when the panel scrolls into view.
+      const go = () => requestAnimationFrame(() => requestAnimationFrame(() => { el.classList.add('in'); apply(); setTimeout(() => el.classList.add('settled'), 1800); }));
+      if ('IntersectionObserver' in window && !calm()) { const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { io.disconnect(); go(); } }, { threshold: 0.15 }); io.observe(el); }
+      else { el.classList.add('in', 'settled'); apply(); }
+    } else apply();
+    return el;
+  }
+  fileData.oc = { el, update };
+  return fileData.oc;
 }
 function evalAll() { return fileData.bookings.map((b, i) => ({ i, raw: b, ev: PF.evaluate(applyOv(b, overrides[i]), { today: PF.todayISO() }), edited: !!overrides[i] })); }
 function toReview(r) { return r.ev.corrections.filter(c => !(reviews[r.i] || {})[c.id]).length; }
@@ -514,6 +665,7 @@ function renderFile() {
     h('button', { class: 'btn', type: 'button', onclick: exportResults, disabled: !rows.length }, 'Export results (.xlsx)')));
   fileData.notices.forEach(n => out.append(h('p', { class: 'notice n-' + n.level }, n.text)));
   if (!rows.length) { out.append(h('p', { class: 'note-warn' }, 'No bookings found under the header row.')); return; }
+  out.append(outcomesPanel().update(rows));
   const exp = fileData.expected;
   const tbody = h('tbody');
   rows.filter(r => filter === 'All' || (filter === 'Review' ? toReview(r) > 0 : filter === 'Advisory' ? r.ev.advisories.length > 0 : r.ev.status === filter)).forEach(r => {
