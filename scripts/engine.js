@@ -1007,9 +1007,10 @@ function firstStop(ev) {
 function outcomes(before, after = before) {
   const stages = OUTCOME_STAGES.map(s => ({ ...s, before: [], now: [], avoided: [] }));
   const byId = Object.fromEntries(stages.map(s => [s.id, s]));
-  const atRisk = [], clean = [];
+  const atRisk = [], clean = [], rows = [];
   before.forEach((ev, i) => {
     const id = ev.b.id, stop = firstStop(ev), nowEv = after[i] || ev, nowStop = firstStop(nowEv);
+    rows.push({ id, before: stop, now: nowStop, status: nowEv.status });
     if (stop) { byId[stop].before.push(id); if (!nowStop) byId[stop].avoided.push(id); }
     if (nowStop) byId[nowStop].now.push(id);
     if (!stop) (ev.status === 'Amber' ? atRisk : clean).push(id);
@@ -1017,7 +1018,7 @@ function outcomes(before, after = before) {
   const stoppedBefore = stages.reduce((n, s) => n + s.before.length, 0);
   const stoppedNow = stages.reduce((n, s) => n + s.now.length, 0);
   const avoided = stages.reduce((n, s) => n + s.avoided.length, 0);
-  return { total: before.length, stages, stoppedBefore, stoppedNow, avoided, atRisk, clean };
+  return { total: before.length, stages, rows, stoppedBefore, stoppedNow, avoided, atRisk, clean };
 }
 // costs: { stageId: { low, high } } in GBP per booking, entered by the user. Blank stages are left out, never guessed.
 // which: 'avoided' (fixed since upload, the default) or 'before' (everything at stake as uploaded).

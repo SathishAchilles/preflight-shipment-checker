@@ -9,14 +9,19 @@
 ## 2. App
 
 - [x] 2.1 In `ingest()` in `scripts/app.js`, set `fileData.baseline` once (design D2).
-- [x] 2.2 Add `outcomesEl(rows)`:
-  - a headline "N of M bookings would likely have been stopped as uploaded";
-  - a sub-line with the fixed, still stopped, need-a-look and clean counts;
-  - four stage cards: count, label, "Likely stopped …", rule IDs, booking IDs, and a "N still stopped" / "All fixed" tag;
-  - the note "Each booking counts once… Reporting only";
-  - a collapsible "Estimate the cost (your figures)" table: low and high inputs per stage, and the totals "At stake as uploaded" and "Avoided by fixes so far", labelled an estimate.
-- [x] 2.3 Call `outcomesEl(rows)` in `renderFile()` right after the notices.
-- [x] 2.4 In `scripts/shell.html`, add `.outcomes` / `.oc-*` styles using the existing colour tokens. Cards go in 4 columns, and 2 below 760 px. The cost table scrolls inside its box on narrow screens.
+- [x] 2.2 Add `outcomesPanel()` (design D4), cached on `fileData.oc`, with `update(rows)`. It contains:
+  - a header: the counting headline "N of M bookings would have been stopped" and the fixed ring;
+  - the route chart: Uploaded → four stop nodes, each with its count, label, rules, a bar split into still stopped and fixed, and a tag → Get through now;
+  - the "Every booking, once" card: a waffle (one cell per booking, glyph and tooltip, flips on change), a legend with counts, and the "As uploaded" and "Now" stacked bars;
+  - the cost card: low and high inputs, a range bar and value per stage, and counting totals "At stake as uploaded" and "Avoided by fixes so far", labelled an estimate;
+  - a data table.
+- [x] 2.3 In `renderFile()`, right after the notices, call `out.append(outcomesPanel().update(rows))`.
+- [x] 2.4 In `scripts/shell.html`:
+  - add the `.oc` styles with Night Route tokens (`--n-*`);
+  - add Sora and JetBrains Mono to the Google Fonts link;
+  - lay out the cards in 2 columns, and 1 below 900 px;
+  - below 640 px, make the route a vertical timeline with horizontal bars;
+  - add a reduced-motion block.
 
 ## 3. Docs and build
 
@@ -26,6 +31,6 @@
 Verify:
 - `cd scripts && node run.js` passes 100%.
 - `node verify.js` output is identical to `main`.
-- In the browser, the sample shows 12 of 25 stopped with the counts in design "Sample workbook".
-- Applying both HS fixes on TB-02 makes it "1 fixed here", and a customs-hold cost of £400–£1,200 shows "Avoided by fixes so far: £400–£1,200".
+- In the browser, the sample shows 12 of 25 stopped with the counts in design "Sample workbook", and the entrance plays once on scroll.
+- Applying both HS fixes on TB-02 shows the ring at 1 / 12, flips TB-02's cell to ✓ and adds a green part to the customs-hold bar. A customs-hold cost of £400–£1,200 shows "Avoided by fixes so far: £400–£1,200".
 - At 390 px the page has no sideways scroll.
