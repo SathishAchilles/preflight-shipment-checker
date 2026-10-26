@@ -145,6 +145,13 @@ details > summary { cursor: pointer; font-weight: 500; padding: 4px 0; }
 .passed li { padding: 3px 0 3px 22px; position: relative; }
 .passed li::before { content: '✓'; position: absolute; left: 2px; color: var(--green); }
 .passed li.p-cannot::before { content: '–'; color: var(--muted); } .passed li.p-na::before { content: '·'; color: var(--muted); }
+.review { margin: 12px 0; padding: 10px 12px; border-left: 3px solid var(--route); background: var(--route-tint); }
+.review-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.review-head h3 { margin: 0; }
+.rvtable td, .rvtable th { vertical-align: top; }
+.rv-ok { color: var(--green); font-weight: 600; } .rv-ch { color: var(--amber); font-weight: 600; }
+.rv-edit input { width: 12em; max-width: 100%; }
+.audit { margin-top: 12px; font-size: 14px; } .audit summary { cursor: pointer; font-weight: 600; }
 .advisories { margin-top: 10px; font-size: 15px; } .advisories ul { margin: 0; padding-left: 18px; }
 .carriers, .confirm { margin-top: 20px; }
 .carriers h3, .confirm h3 { font: 700 20px var(--cond); margin-bottom: 6px; }

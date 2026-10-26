@@ -145,6 +145,13 @@ details > summary { cursor: pointer; font-weight: 500; padding: 4px 0; }
 .passed li { padding: 3px 0 3px 22px; position: relative; }
 .passed li::before { content: '✓'; position: absolute; left: 2px; color: var(--green); }
 .passed li.p-cannot::before { content: '–'; color: var(--muted); } .passed li.p-na::before { content: '·'; color: var(--muted); }
+.review { margin: 12px 0; padding: 10px 12px; border-left: 3px solid var(--route); background: var(--route-tint); }
+.review-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.review-head h3 { margin: 0; }
+.rvtable td, .rvtable th { vertical-align: top; }
+.rv-ok { color: var(--green); font-weight: 600; } .rv-ch { color: var(--amber); font-weight: 600; }
+.rv-edit input { width: 12em; max-width: 100%; }
+.audit { margin-top: 12px; font-size: 14px; } .audit summary { cursor: pointer; font-weight: 600; }
 .advisories { margin-top: 10px; font-size: 15px; } .advisories ul { margin: 0; padding-left: 18px; }
 .carriers, .confirm { margin-top: 20px; }
 .carriers h3, .confirm h3 { font: 700 20px var(--cond); margin-bottom: 6px; }
@@ -823,13 +830,28 @@ function normaliseBooking(raw) {
   const red = (field, text, fix) => issues.push({ sev: 'Red', field, text, fix });
   const amber = (field, text, fix) => issues.push({ sev: 'Amber', field, text, fix });
   const b = { id: raw.id || 'NEW', source: raw.source || 'chat', duplicateOf: raw.duplicateOf, carrierOverride: raw.carrierOverride || null };
+  // Automatic corrections: every value used that differs from what was entered (beyond surrounding spaces).
+  // Recorded for human review only; they never change a status.
+  b.corrections = [];
+  const corr = (scope, field, label, rawV, used, kind, why, sku) => {
+    if (used == null || (typeof used === 'number' && !isFinite(used))) return;
+    const blank = isBlank(rawV);
+    if (blank && kind !== 'default' && kind !== 'derived') return;
+    const entered = blank ? '' : clean(rawV);
+    if (!blank && entered === String(used)) return;
+    b.corrections.push({ id: `${scope}:${sku || ''}:${field}`, scope, field, label, sku: sku || null, entered, used: String(used), kind, why });
+  };
+  const caseOrAlias = (r, u) => (clean(r).toLowerCase() === String(u).toLowerCase() ? 'format' : 'alias');
 
   b.seller = clean(raw.seller);
   if (!b.seller) red('Seller name', 'Seller name is missing.', 'Add the business name that is sending the goods — it goes on the commercial invoice.');
 
   b.originCity = normCity(raw.originCity, ORIGIN_CITIES);
   if (!b.originCity) red('Origin city', isBlank(raw.originCity) ? 'Origin city is missing.' : `Origin city “${clean(raw.originCity)}” isn't a collection point we serve.`, `Use one of: ${ORIGIN_CITIES.join(', ')}.`);
+  if (b.originCity) corr('booking', 'originCity', 'Origin city', raw.originCity, b.originCity, caseOrAlias(raw.originCity, b.originCity), 'Recognised city name');
   b.originCountry = isBlank(raw.originCountry) ? 'United Kingdom' : normCountry(raw.originCountry);
+  if (isBlank(raw.originCountry)) corr('booking', 'originCountry', 'Origin country', raw.originCountry, 'United Kingdom', 'default', 'Every route starts in the United Kingdom');
+  else if (b.originCountry) corr('booking', 'originCountry', 'Origin country', raw.originCountry, b.originCountry, caseOrAlias(raw.originCountry, b.originCountry), 'Recognised country name');
   if (b.originCountry !== 'United Kingdom') red('Origin country', `Origin country “${clean(raw.originCountry)}” isn't served — every route starts in the United Kingdom.`, 'Set origin country to United Kingdom.');
 
   b.destCity = normCity(raw.destCity, Object.keys(CITY_COUNTRY));
@@ -838,17 +860,26 @@ function normaliseBooking(raw) {
   if (!isBlank(raw.destCountry) && !['Germany', 'France', 'Netherlands'].includes(dc)) red('Destination country', `Destination country “${clean(raw.destCountry)}” has no carrier route.`, 'Routes run to Germany, France or the Netherlands only.');
   if (b.destCity && dc && CITY_COUNTRY[b.destCity] !== dc) red('Destination', `${b.destCity} is in ${CITY_COUNTRY[b.destCity]}, but the destination country says ${dc}.`, `Correct either the city or the country so they match (e.g. ${b.destCity} · ${CITY_COUNTRY[b.destCity]}).`);
   b.destCountry = b.destCity ? CITY_COUNTRY[b.destCity] : (['Germany', 'France', 'Netherlands'].includes(dc) ? dc : null);
+  if (b.destCity) corr('booking', 'destCity', 'Destination city', raw.destCity, b.destCity, caseOrAlias(raw.destCity, b.destCity), 'Recognised city name');
+  if (isBlank(raw.destCountry) && b.destCountry) corr('booking', 'destCountry', 'Destination country', raw.destCountry, b.destCountry, 'derived', `Taken from the destination city (${b.destCity})`);
+  else if (dc && b.destCountry === dc) corr('booking', 'destCountry', 'Destination country', raw.destCountry, dc, caseOrAlias(raw.destCountry, dc), 'Recognised country name');
 
   b.destType = normDestType(raw.destType);
+  if (b.destType) corr('booking', 'destType', 'Destination type', raw.destType, b.destType, caseOrAlias(raw.destType, b.destType), `Read as ${b.destType}`);
   if (!b.destType) red('Destination type', isBlank(raw.destType) ? 'Destination type is missing.' : `Destination type “${clean(raw.destType)}” isn't recognised.`, 'Set it to Warehouse or Business address.');
 
   const d = typeof raw.ready === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.ready) && raw.readyIsISO ? { iso: raw.ready } : parseSheetDate(raw.ready);
   b.ready = d.iso || null;
+  if (b.ready && !raw.readyIsISO && raw.source !== 'chat' && !(typeof raw.ready === 'string' && /^\d{2}-\d{2}-\d{4}$/.test(clean(raw.ready)))) {
+    const entered = raw.ready instanceof Date ? raw.ready.toISOString().slice(0, 10) : raw.ready;
+    corr('booking', 'ready', 'Ready to ship date', entered, fmtDate(b.ready), 'date', typeof raw.ready === 'number' || raw.ready instanceof Date ? 'Excel date cell read as DD-MM-YYYY' : 'Date read as DD-MM-YYYY');
+  }
   if (!b.ready) red('Ready to ship date', d.error === 'missing' ? 'Ready to ship date is missing.' : `Ready to ship date ${d.error}.`, 'Enter the collection date as DD-MM-YYYY.');
 
   b.priority = PRIORITIES.includes(raw.priority) ? raw.priority : normPriority(raw.priority);
   if (!b.priority) amber('Seller priority', isBlank(raw.priority) ? 'Seller priority is missing — recommending on a Balanced basis.' : `Seller priority “${clean(raw.priority)}” isn't recognised — recommending on a Balanced basis.`, 'Choose Cheapest, Fastest, Most reliable or Balanced.');
   b.priorityUsed = b.priority || 'Balanced';
+  if (b.priority && !isBlank(raw.priority) && !PRIORITIES.includes(raw.priority)) corr('booking', 'priority', 'Seller priority', raw.priority, b.priority, caseOrAlias(raw.priority, b.priority), 'Recognised priority');
 
   const count = (field, label, allowZero = false) => {
     const v = num(raw[field]);
@@ -856,6 +887,7 @@ function normaliseBooking(raw) {
     if (isNaN(v)) { red(label, `${label} “${clean(raw[field])}” isn't a number.`, `Enter ${label.toLowerCase()} as a whole number.`); return null; }
     if (v < 0 || (!allowZero && v === 0)) { red(label, `${label} is ${v} — it must be more than zero.`, `Enter the real ${label.toLowerCase()}.`); return v === 0 ? 0 : null; }
     if (!Number.isInteger(v)) { red(label, `${label} is ${v} — it must be a whole number.`, `Round to the real count of ${label.toLowerCase()}.`); }
+    if (typeof raw[field] === 'string') corr('booking', field, label, raw[field], v, 'format', 'Removed £, commas or units');
     return v;
   };
   const amount = (field, label) => {
@@ -863,6 +895,7 @@ function normaliseBooking(raw) {
     if (v == null) { red(label, `${label} is missing.`, `Enter the ${label.toLowerCase()}.`); return null; }
     if (isNaN(v)) { red(label, `${label} “${clean(raw[field])}” isn't a number.`, `Enter ${label.toLowerCase()} as a number.`); return null; }
     if (v <= 0) { red(label, `${label} is ${v} — it must be more than zero.`, `Enter the real ${label.toLowerCase()}.`); return v; }
+    if (typeof raw[field] === 'string') corr('booking', field, label, raw[field], v, 'format', 'Removed £, commas or units');
     return v;
   };
   b.pallets = count('pallets', 'Pallets');
@@ -870,9 +903,14 @@ function normaliseBooking(raw) {
   b.declared = amount('declared', 'Total declared value');
   b.gross = amount('gross', 'Total gross weight');
   b.currency = isBlank(raw.currency) ? 'GBP' : clean(raw.currency).toUpperCase();
+  if (isBlank(raw.currency)) corr('booking', 'currency', 'Currency', raw.currency, 'GBP', 'default', 'Only GBP is supported');
+  else if (b.currency === 'GBP') corr('booking', 'currency', 'Currency', raw.currency, 'GBP', 'format', 'Currency code in capitals');
+  if (raw.derived && raw.derived.cartons && isNum(b.cartons)) corr('booking', 'cartons', 'Cartons', '', b.cartons, 'derived', 'Worked out: sum of the item cartons');
+  if (raw.derived && raw.derived.declared && isNum(b.declared)) corr('booking', 'declared', 'Total declared value', '', b.declared, 'derived', 'Worked out: quantity × unit price across items');
   if (b.currency !== 'GBP') red('Currency', `Currency is ${clean(raw.currency)} — this service books in GBP only.`, 'Convert all money values to GBP and set currency to GBP.');
 
   b.appointment = normYesNo(raw.appointment);
+  if (b.appointment && !isBlank(raw.appointment)) corr('booking', 'appointment', 'Delivery appointment', raw.appointment, b.appointment, caseOrAlias(raw.appointment, b.appointment), 'Read as Yes/No');
   if (!b.appointment && b.destType === 'Warehouse') amber('Delivery appointment', isBlank(raw.appointment) ? 'Delivery appointment answer is missing — treated as not booked.' : `Delivery appointment “${clean(raw.appointment)}” isn't Yes/No — treated as not booked.`, 'Answer Yes or No.');
 
   if (b.duplicateOf) red('Booking ID', `Booking ID ${b.id} is used more than once (first on row ${b.duplicateOf}). Items can't be matched safely.`, 'Give every booking a unique ID.');
@@ -883,6 +921,7 @@ function normaliseBooking(raw) {
     if (!clean(it.sku)) amber(`Item ${i + 1}`, `Item line ${i + 1}${it.rowNum ? ' (row ' + it.rowNum + ')' : ''} has no SKU.`, 'Add the seller SKU so the warehouse can match cartons.');
     if (!n.description) red(lab, `${lab} has no description.`, 'Describe the product in plain words — customs and the dangerous-goods check need it.');
     n.hs = normHS(it.hs);
+    if (!n.hs.blank && !n.hs.hasLetters && n.hs.digits) corr('item', 'hs', 'HS code', it.hs, n.hs.digits, 'format', 'HS digits read without dots, spaces or prefix', n.sku);
     n.hsRec = hsRecommend(n.hs);
     n.hsSug = n.hs.blank || n.hs.hasLetters || n.hs.digits.length < 6 ? hsSuggest(it.description) : null;   // recommendation only
     const v = (f, label, isCount) => {
@@ -891,6 +930,7 @@ function normaliseBooking(raw) {
       if (isNaN(x)) { red(lab, `${lab}: ${label} “${clean(it[f])}” isn't a number.`, `Enter ${label} as a number.`); return null; }
       if (x <= 0) { red(lab, `${lab}: ${label} is ${x} — it must be more than zero.`, `Enter the real ${label}.`); return x; }
       if (isCount && !Number.isInteger(x)) red(lab, `${lab}: ${label} is ${x} — it must be a whole number.`, `Use a whole number for ${label}.`);
+      if (typeof it[f] === 'string') corr('item', f, label.charAt(0).toUpperCase() + label.slice(1), it[f], x, 'format', 'Removed £, commas or units', n.sku);
       return x;
     };
     n.qty = v('qty', 'quantity', true);
@@ -898,8 +938,12 @@ function normaliseBooking(raw) {
     n.upc = v('upc', 'units per carton', true);
     n.cartons = v('cartons', 'cartons', true);
     n.unitWeight = v('unitWeight', 'unit weight', false);
+    const dv = it.derived || {};
+    if (dv.cartons && isNum(n.cartons)) corr('item', 'cartons', 'Cartons', '', n.cartons, 'derived', `Worked out: ${fmtNum(n.qty)} ÷ ${fmtNum(n.upc)} per carton`, n.sku);
+    if (dv.qty && isNum(n.qty)) corr('item', 'qty', 'Quantity', '', n.qty, 'derived', `Worked out: ${fmtNum(n.cartons)} cartons × ${fmtNum(n.upc)}`, n.sku);
+    if (dv.upc && isNum(n.upc)) corr('item', 'upc', 'Units per carton', '', n.upc, 'derived', `Worked out: ${fmtNum(n.qty)} ÷ ${fmtNum(n.cartons)} cartons`, n.sku);
     if (isBlank(it.coo)) n.coo = null;
-    else { n.coo = normCountry(it.coo) || clean(it.coo); if (!COO_LIST.includes(n.coo)) amber(lab, `${lab}: country of origin “${clean(it.coo)}” isn't one of the expected values.`, `Use the full country name (e.g. ${COO_LIST.join(', ')}).`); }
+    else { n.coo = normCountry(it.coo) || clean(it.coo); if (normCountry(it.coo)) corr('item', 'coo', 'Country of origin', it.coo, n.coo, caseOrAlias(it.coo, n.coo), 'Recognised country name', n.sku); if (!COO_LIST.includes(n.coo)) amber(lab, `${lab}: country of origin “${clean(it.coo)}” isn't one of the expected values.`, `Use the full country name (e.g. ${COO_LIST.join(', ')}).`); }
     return n;
   });
   if (!b.items.length) red('Items', 'This booking has no item lines.', 'Add at least one item (SKU, description, HS code, quantity, unit price, packing and weight) — the commercial invoice is built from them.');
@@ -1213,11 +1257,11 @@ function evaluate(rawOrNorm, opts = {}) {
     const arrive = nextWorkingDay(arriveRaw);
     eta = { collect, arrive, movedCollect: collect !== start, movedArrive: arrive !== arriveRaw, fromToday: b.ready < today };
   }
-  return { b, checks, dataIssues: b.dataIssues, advisories, status, reds, ambers, rec, plan, eta, net, today };
+  return { b, checks, dataIssues: b.dataIssues, advisories, corrections: b.corrections || [], status, reds, ambers, rec, plan, eta, net, today };
 }
 
 // ---------- Plain-language confirmation ----------
-function confirmation(ev) {
+function confirmation(ev, reviewed = 0) {
   const { b, rec, eta, status } = ev;
   if (!rec) return null;
   const c = rec.chosen;
@@ -1230,6 +1274,8 @@ function confirmation(ev) {
       : `Carrier: ${label(c)} — ${gbp(c.cost)} (${gbp(c.price)} × ${c.pallets} pallet${c.pallets === 1 ? '' : 's'}), ${c.transit} days in transit, ${c.onTime}% on time.`,
   ];
   if (eta) lines.push(`Collection ${fmtDateLong(eta.collect)}; estimated delivery ${fmtDateLong(eta.arrive)}.`);
+  const unreviewed = Math.max(0, (ev.corrections || []).length - reviewed);
+  if (unreviewed) lines.push(`${unreviewed} automatic correction${unreviewed === 1 ? '' : 's'} not yet reviewed — check ${unreviewed === 1 ? 'it' : 'them'} before booking.`);
   const next = [];
   if (status === 'Red') next.push('Fix every red issue above — the shipment cannot be handed to the carrier until they are cleared.');
   if (status === 'Amber') next.push('Review the amber warnings — they will not stop collection but often cause delays at customs or the warehouse.');
@@ -1538,7 +1584,7 @@ function countryIn(s) {
 }
 
 // ---------- State ----------
-function newState() { return { booking: { seller: null, originCity: null, destCity: null, destCountry: null, destType: null, ready: null, priority: null, pallets: null, cartons: null, cartonsStated: false, declared: null, declaredStated: false, gross: null, appointment: null, carrierOverride: null, items: [] }, pending: null, complete: false, lastEval: null, lastItem: null, confirmed: null, turns: 0 }; }
+function newState() { return { booking: { seller: null, originCity: null, destCity: null, destCountry: null, destType: null, ready: null, priority: null, pallets: null, cartons: null, cartonsStated: false, declared: null, declaredStated: false, gross: null, appointment: null, carrierOverride: null, items: [] }, reviewed: {}, pending: null, complete: false, lastEval: null, lastItem: null, confirmed: null, turns: 0 }; }
 function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
 function deriveItems(b) {
@@ -1564,8 +1610,8 @@ function toRaw(st, id) {
   return {
     id: id || 'CHAT', source: 'chat', seller: b.seller, originCity: b.originCity, originCountry: 'United Kingdom', destCity: b.destCity, destCountry: b.destCountry,
     destType: b.destType, ready: b.ready, priority: b.priority, pallets: b.pallets, cartons: b.cartonsStated ? b.cartons : t.cartons, declared: b.declaredStated ? b.declared : t.value,
-    currency: 'GBP', gross: b.gross, appointment: b.destType === 'Business address' ? (b.appointment || 'No') : b.appointment, carrierOverride: b.carrierOverride,
-    items: b.items.map(it => ({ sku: it.sku, description: it.description, hs: it.hsUnknown ? '' : it.hs, qty: it.qty, price: it.price, upc: it.upc, cartons: it.cartons, unitWeight: it.unitWeight, coo: it.cooUnknown ? '' : it.coo })),
+    currency: 'GBP', derived: { cartons: !b.cartonsStated, declared: !b.declaredStated }, gross: b.gross, appointment: b.destType === 'Business address' ? (b.appointment || 'No') : b.appointment, carrierOverride: b.carrierOverride,
+    items: b.items.map(it => ({ sku: it.sku, description: it.description, hs: it.hsUnknown ? '' : it.hs, qty: it.qty, price: it.price, upc: it.upc, cartons: it.cartons, unitWeight: it.unitWeight, coo: it.cooUnknown ? '' : it.coo, derived: it.derived || {} })),
   };
 }
 
@@ -1706,6 +1752,15 @@ function turn(stIn, text, today) {
     reply.firstComplete = !st.complete; st.complete = true;
     if (ev.rec && !st.priceNoteShown) { reply.priceNote = PF.PRICE_NOTE; st.priceNoteShown = true; }
     st.lastEval = { checks: ev.checks.map(c => ({ id: c.id, status: c.status })), status: ev.status };
+    // Human review of automatic corrections: "looks right" accepts every one shown; nothing else changes.
+    st.reviewed = st.reviewed || {};
+    if (/^\s*(?:looks? (?:right|good|fine|ok(?:ay)?)|all (?:correct|good|fine)|that'?s (?:right|correct)|correct)\s*[.!]?\s*$/i.test(text)) {
+      const open = ev.corrections.filter(c => !st.reviewed[c.id]);
+      open.forEach(c => { st.reviewed[c.id] = 'accepted'; });
+      reply.accepted = open;
+      reply.notes.push(open.length ? `Thanks — ${open.length} automatic correction${open.length === 1 ? '' : 's'} marked as checked. Nothing in the booking changed.` : 'Nothing left to check.');
+    }
+    if (reply.firstComplete || P.intents.includes('summary')) reply.corrections = ev.corrections.filter(c => !st.reviewed[c.id]);
     if (P.intents.includes('confirm')) {
       if (ev.status === 'Red') reply.intent = 'confirm-blocked';
       else { st.confirmed = st.confirmed || refFor(st); reply.intent = 'confirmed'; reply.ref = st.confirmed; }
@@ -1897,6 +1952,19 @@ function runTests(PF, CHAT) {
   T('DG grey area', 'Lithium e-bike → R-06 Red, no extra ADR advisory', () => { const e = ev(b => { b.items[0].description = 'Lithium e-bike'; }); return expect(st(e, 'R-06') === 'fail' && dgAdv(e).length === 0, dgAdv(e)); });
   T('DG grey area', 'Same booking twice → identical DG advisories', () => { const m = b => { b.items[0].description = 'Pool chlorine tablets 5 kg'; }; return expect(JSON.stringify(dgAdv(ev(m))) === JSON.stringify(dgAdv(ev(m)))); });
 
+  // ---------- Corrections (audit trail) ----------
+  const cor = e => e.corrections.map(c => `${c.field}${c.sku ? '@' + c.sku : ''}:${c.entered}->${c.used}:${c.kind}`);
+  T('Corrections', 'Clean template booking → no corrections', () => expect(ev().corrections.length === 0, cor(ev())));
+  T('Corrections', 'TB-16 shape: HS 6912.00, origin UK, Excel date, “yes” → exactly 4 corrections, status Green', () => { const e = ev(b => { b.ready = 46350; b.appointment = 'yes'; b.items[0].hs = '6912.00'; b.items[0].coo = 'UK'; }); const c = cor(e); return expect(c.length === 4 && c.includes('ready:46350->24-11-2026:date') && c.includes('appointment:yes->Yes:format') && c.includes('hs@MUG-01:6912.00->691200:format') && c.includes('coo@MUG-01:UK->United Kingdom:alias') && e.status === 'Green', [e.status, c]); });
+  T('Corrections', 'Values already canonical (HS text 090240, date 18-11-2026, pallets 2) → none', () => { const e = ev(b => { b.items[0].hs = '090240'; b.ready = '18-11-2026'; b.pallets = 2; }); return expect(e.corrections.length === 0, cor(e)); });
+  T('Corrections', '“£5,400” declared value → format correction to 5400', () => expect(cor(ev(b => { b.declared = '£5,400'; })).includes('declared:£5,400->5400:format'), cor(ev(b => { b.declared = '£5,400'; }))));
+  T('Corrections', 'Blank currency → default GBP', () => expect(cor(ev(b => { b.currency = ''; })).includes('currency:->GBP:default')));
+  T('Corrections', 'Destination type “Amazon FC” → alias Warehouse', () => expect(cor(ev(b => { b.destType = 'Amazon FC'; })).includes('destType:Amazon FC->Warehouse:alias')));
+  T('Corrections', 'Leading-zero number 90111 is NOT corrected (recommendation only)', () => expect(!cor(ev(b => { b.items[0].hs = 90111; })).some(x => /^hs@/.test(x))));
+  T('Corrections', 'Same input twice → identical corrections', () => { const m = b => { b.ready = 46350; b.items[0].coo = 'UK'; }; return expect(JSON.stringify(ev(m).corrections) === JSON.stringify(ev(m).corrections)); });
+  T('Corrections', 'Corrections never change status, reds or ambers', () => { const a = ev(), c = ev(b => { b.destType = 'Amazon FC'; b.declared = '£5,400'; b.appointment = 'yes'; }); return expect(c.corrections.length === 3 && a.status === c.status && a.reds === c.reds && a.ambers === c.ambers, [c.status, c.corrections.length]); });
+  T('Corrections', 'Confirmation says how many are not yet reviewed', () => { const e = ev(b => { b.appointment = 'yes'; b.items[0].coo = 'UK'; }); return expect(PF.confirmation(e).lines.some(l => /^2 automatic corrections not yet reviewed/.test(l)) && !PF.confirmation(e, 2).lines.some(l => /not yet reviewed/.test(l))); });
+
   // ---------- Pallet plan ----------
   const pb = (o) => ({ destCountry: 'Germany', gross: 900, pallets: 2, items: [], ...o });
   T('Pallet plan', 'Germany at 900 kg → A 2×450 kg £360, B 2×450 kg £440, C 3×300 kg £1,020', () => { const p = PF.palletPlan(pb(), 'Carrier A'); const g = c => p.perCarrier.find(x => x.carrier === c); return expect(g('Carrier A').minPallets === 2 && g('Carrier A').perPallet === 450 && g('Carrier A').cost === 360 && g('Carrier B').minPallets === 2 && g('Carrier B').cost === 440 && g('Carrier C').minPallets === 3 && g('Carrier C').perPallet === 300 && g('Carrier C').cost === 1020, JSON.stringify(p.perCarrier)); });
@@ -1928,6 +1996,8 @@ function runTests(PF, CHAT) {
   if (CHAT) {
     const talk = (msgs) => { let s = CHAT.newState(); let last; for (const m of msgs) { const r = CHAT.turn(s, m, TODAY); s = r.st; last = r.reply; } return { s, r: last, ev: s.complete ? PF.evaluate(CHAT.toRaw(s), { today: TODAY }) : null }; };
     const FULL = "Hi, I'm Priya from Northfield Goods. We need to send 3 pallets from Manchester to our Amazon warehouse in Frankfurt, ready 5 Nov. 1080 ceramic mugs at £5 each, 12 per carton, 0.5kg each, HS 691200, made in the UK. Total weight 620kg. Delivery slot is booked. Cheapest please.";
+    T('Corrections', 'Chat lists unreviewed corrections when the booking completes; “looks right” accepts them without changing the booking', () => { let st = CHAT.newState(); const r1 = CHAT.turn(st, FULL, TODAY); const before = JSON.stringify(CHAT.toRaw(r1.st)); const r2 = CHAT.turn(r1.st, 'Looks right', TODAY); const r3 = CHAT.turn(r2.st, "what's wrong?", TODAY); return expect(r1.reply.corrections.length === 3 && r2.reply.accepted.length === 3 && JSON.stringify(CHAT.toRaw(r2.st)) === before && Object.keys(r2.st.reviewed).length === 3 && r3.reply.corrections.length === 0 && !r2.reply.nothing, [r1.reply.corrections.length, r2.reply.accepted && r2.reply.accepted.length, r3.reply.corrections && r3.reply.corrections.length]); });
+    T('Corrections', 'Chat worked-out values → derived corrections (item cartons 90, total cartons 90, declared 5400), no date noise', () => { const { s: st } = talk([FULL]); const e = PF.evaluate(CHAT.toRaw(st), { today: TODAY }); const c = cor(e); return expect(c.includes('cartons@MUG-01:->90:derived') && c.includes('cartons:->90:derived') && c.includes('declared:->5400:derived') && !c.some(x => /^ready/.test(x)), c); });
     const TEE = '200 t-shirts to Berlin from Leeds, £6 each, 20 per carton, 0.2 kg each, made in Turkey';
     T('Conversation', 'HS: T-shirts with no material → asks once what they are mainly made of; “cotton” → suggests 610910 (not recorded yet)', () => { const a = talk([TEE]), b = talk([TEE, 'cotton']); return expect(/mainly made of/.test(a.r.ask) && a.r.chips.includes('Cotton') && /610910/.test(b.r.ask) && b.r.chips.includes('Use 610910') && b.s.booking.items[0].hs == null, b.r.ask); });
     T('Conversation', 'HS: the suggestion is recorded only after the seller accepts it (“use 610910”)', () => { const t = talk([TEE, 'cotton', 'use 610910']); return expect(String(t.s.booking.items[0].hs) === '610910', JSON.stringify(t.s.booking.items[0].hs)); });
@@ -1990,6 +2060,54 @@ const VERDICT = { Red: 'Not ready — fix the red items before collection', Ambe
 
 // ---------- Downloads (claude.ai viewer capability, with a plain-browser fallback) ----------
 let DL = null;
+
+// ---------- Automatic-correction review and audit trail (session only; download the report to keep it) ----------
+const reviews = {}; // file bookingIndex -> { [correctionId]: { state: 'accepted' | 'changed', value, c } }
+const audit = []; const auditSeen = new Set();
+const FIELD_LABEL = { pallets: 'Pallets', cartons: 'Cartons', declared: 'Total declared value', gross: 'Total gross weight', appointment: 'Delivery appointment', ready: 'Ready to ship date', carrierOverride: 'Carrier', destType: 'Destination type', hs: 'HS code', coo: 'Country of origin', qty: 'Quantity', price: 'Unit price', upc: 'Units per carton', unitWeight: 'Unit weight' };
+const shown = v => (v == null || v === '' ? '(blank)' : String(v));
+function logEvent(e) { audit.push({ at: new Date().toISOString(), booking: '', sku: '', field: '', before: '', after: '', by: 'you', action: '', ...e }); }
+function noteCorrections(ev, extra = {}) {
+  ev.corrections.forEach(c => {
+    const k = `${extra.chat ? 'chat' : ev.b.id}|${c.id}|${c.entered}|${c.used}`;
+    if (auditSeen.has(k)) return; auditSeen.add(k);
+    logEvent({ booking: ev.b.id, sku: c.sku || '', field: c.label, before: shown(c.entered), after: c.used, by: 'system', action: 'auto-corrected', ...extra });
+  });
+}
+const hhmmss = iso => { const d = new Date(iso); return [d.getHours(), d.getMinutes(), d.getSeconds()].map(n => String(n).padStart(2, '0')).join(':'); };
+function historyEl(events, title, open = false) {
+  if (!events.length) return null;
+  return h('details', Object.assign({ class: 'audit' }, open ? { open: true } : {}), h('summary', null, `${title} (${events.length} event${events.length === 1 ? '' : 's'})`),
+    h('p', { class: 'note' }, 'Download the report to keep this record — it is not stored anywhere else.'),
+    h('div', { class: 'tablewrap' }, h('table', { class: 'ctable' },
+      h('thead', null, h('tr', null, ['Time', 'Booking', 'SKU', 'Field', 'Before', 'After', 'By', 'Action'].map(x => h('th', null, x)))),
+      h('tbody', null, [...events].reverse().map(e => h('tr', null, h('td', null, hhmmss(e.at)), h('td', null, e.booking), h('td', null, e.sku || ''), h('td', null, e.field), h('td', null, e.before), h('td', null, e.after), h('td', null, e.by), h('td', null, e.action)))))));
+}
+function reviewEl(ev, ctx) {
+  const R = ctx.review; if (!R) return null;
+  const cur = ev.corrections; const rows = [...cur, ...R.changedOnly(cur)];
+  if (!rows.length) return null;
+  const open = cur.filter(c => !R.state(c.id));
+  const editCell = (c) => (e2) => {
+    const td = e2.target.closest('td'); td.innerHTML = '';
+    const inp = h('input', { type: 'text', value: c.used, 'aria-label': `New value for ${c.label}` });
+    const save = () => { const v = inp.value.trim(); if (v) R.change(c, v); };
+    inp.addEventListener('keydown', k => { if (k.key === 'Enter') { k.preventDefault(); save(); } if (k.key === 'Escape') R.redraw(); });
+    td.append(h('span', { class: 'rv-edit' }, inp, ' ', h('button', { class: 'btn tiny', type: 'button', onclick: save }, 'Save'), ' ', h('button', { class: 'linkbtn', type: 'button', onclick: () => R.redraw() }, 'Cancel')));
+    inp.focus(); inp.select();
+  };
+  return h('section', { class: 'review' },
+    h('div', { class: 'review-head' }, h('h3', null, 'Automatic corrections — please review'),
+      open.length ? h('button', { class: 'btn small', type: 'button', onclick: () => R.acceptAll(open) }, 'Accept all') : null),
+    h('p', { class: 'note' }, 'We changed these values before checking. Accept each one, or change it. Reviewing never changes the status.'),
+    h('div', { class: 'tablewrap' }, h('table', { class: 'ctable rvtable' },
+      h('thead', null, h('tr', null, ['Field', 'You entered', 'We used', 'Why', ''].map(x => h('th', null, x)))),
+      h('tbody', null, rows.map(c => { const st = R.state(c.id); return h('tr', null,
+        h('th', { scope: 'row' }, c.sku ? `${c.label} (${c.sku})` : c.label), h('td', null, shown(c.entered)), h('td', null, c.used), h('td', null, c.why),
+        h('td', null, st ? h('span', { class: st.state === 'accepted' ? 'rv-ok' : 'rv-ch' }, st.state === 'accepted' ? '✓ Accepted' : `✎ Changed by you: ${st.value}`)
+          : h('span', null, h('button', { class: 'btn tiny', type: 'button', onclick: () => R.accept(c) }, 'Accept'), ' ', h('button', { class: 'btn tiny ghost', type: 'button', onclick: editCell(c) }, 'Change…')))); })))),
+    h('p', { class: 'muted' }, open.length ? `${open.length} to review` : 'All reviewed'));
+}
 try { if (window.claude && typeof window.claude.use === 'function') window.claude.use('downloads').then(d => { DL = d; }).catch(() => {}); } catch (e) {}
 async function saveFile(name, buf) {
   if (DL) { try { await DL.save({ filename: name, data: new Blob([buf]) }); return; } catch (e) { if (e && e.code === 'declined') return; } }
@@ -2101,7 +2219,7 @@ function reportEl(ev, ctx) {
       planEl(ev, ctx));
   }
 
-  const conf = PF.confirmation(ev);
+  const conf = PF.confirmation(ev, ctx.reviewedCount ? ctx.reviewedCount(ev) : 0);
   const confEl = conf ? h('section', { class: 'confirm' },
     h('h3', null, 'Booking summary'),
     h('p', { class: 'conf-head s-' + status }, conf.head),
@@ -2119,7 +2237,8 @@ function reportEl(ev, ctx) {
       h('tfoot', null, h('tr', null, h('td', { colspan: 6 }, 'Total of lines · declared on booking'), h('td', { class: 'num' }, lines.every(x => x != null) ? PF.gbp(lines.reduce((a, c2) => a + c2, 0)) : '—', h('br'), h('small', null, PF.gbp(b.declared))), h('td', { colspan: 2 })))))) : null;
 
   const stamp = hsStamp() ? h('p', { class: 'note hsstamp' }, hsStamp()) : null;
-  return h('div', { class: 'report' }, head, issueList, passedEl, adv, carrierEl, confEl, inv, stamp);
+  const hist = ctx.history ? historyEl(ctx.history(ev), 'History for this booking') : null;
+  return h('div', { class: 'report' }, head, reviewEl(ev, ctx), issueList, passedEl, adv, carrierEl, confEl, inv, stamp, hist);
 }
 
 function planEl(ev, ctx) {
@@ -2183,6 +2302,7 @@ function send(text) {
   if (reply.intent === 'reset') { renderSheet(); bubble('bot', h('p', null, reply.ask)); return; }
   if (reply.intent === 'help') parts.push(h('p', null, 'Tell me about the shipment in plain words. You can change anything at any time — “add a pallet”, “send it to Lyon instead”, “HS code for the mugs is 691200”, “switch to carrier B”. Say “what’s wrong?” for the report, “confirm” to book, or “start over”.'));
   reply.notes.forEach(n => parts.push(h('p', { class: 'note-warn' }, n)));
+  if (cs.complete || reply.status) reply.changes.filter(c => !c.first && c.from !== '—').forEach(c => logEvent({ booking: 'CHAT', field: c.label, before: String(c.from), after: String(c.to), action: 'changed', chat: true }));
   const ch = reply.changes.filter(c => c.field !== 'destCountry' || !reply.changes.some(x => x.field === 'destCity'));
   if (ch.length) parts.push(h('div', { class: 'got' }, h('p', { class: 'mini-h' }, cs.turns === 1 || ch.every(c => c.first) ? 'Got it' : 'Updated'), h('ul', null, groupChanges(ch).map(t => h('li', null, t)))));
   if (reply.derived.length) parts.push(h('p', { class: 'muted' }, 'Worked out: ' + reply.derived.join(' ')));
@@ -2193,9 +2313,14 @@ function send(text) {
     if (reply.diff.length) parts.push(h('div', { class: 'got' }, h('p', { class: 'mini-h' }, 'Checks re-run'), h('ul', null, reply.diff.map(d => h('li', { class: 'd-' + d.to }, `${d.id} now ${STATUS_WORD[d.to]}`)))));
     if (reply.firstComplete) parts.push(h('p', null, 'That’s everything I need. Pre-flight result:'));
     parts.push(miniVerdict(ev, reply.priceNote));
+    noteCorrections(ev, { chat: true });
+    (reply.accepted || []).forEach(c => logEvent({ booking: 'CHAT', sku: c.sku || '', field: c.label, before: shown(c.entered), after: c.used, action: 'accepted', chat: true }));
+    if (reply.corrections && reply.corrections.length) parts.push(h('div', { class: 'got' }, h('p', { class: 'mini-h' }, 'I worked out or adjusted these — please check'),
+      h('ul', null, reply.corrections.map(c => h('li', null, `${c.sku ? c.label + ' (' + c.sku + ')' : c.label}: ${shown(c.entered)} → ${c.used} (${c.why})`)))));
     if (reply.intent === 'confirm-blocked') parts.push(h('p', { class: 'note-warn' }, `I can’t confirm while there ${ev.reds === 1 ? 'is 1 red issue' : 'are ' + ev.reds + ' red issues'} — red means the shipment would be stopped. Fix ${ev.reds === 1 ? 'it' : 'them'} (the buttons in the report do most of it) and say “confirm” again.`));
     if (reply.intent === 'confirmed') parts.push(confCard(ev, reply.ref));
     if (reply.intent !== 'confirmed') chips = ev.status === 'Red' ? ['What’s wrong?'] : ['Confirm booking', 'What’s wrong?'];
+    if (chips && reply.corrections && reply.corrections.length) chips = ['Looks right', ...chips];
     if (ev.status !== 'Red' && reply.intent !== 'confirmed' && !reply.firstComplete && !reply.diff.length && !ch.length && !reply.nothing) {/* summary only */}
   } else {
     if (reply.intent === 'confirm-incomplete') parts.push(h('p', null, 'Not yet — I still need a few details first.'));
@@ -2220,12 +2345,20 @@ function miniVerdict(ev, priceNote) {
     h('button', { class: 'linkbtn only-narrow', type: 'button', onclick: () => $('#sheet').scrollIntoView({ behavior: 'smooth' }) }, 'See the full report ↓'));
 }
 function confCard(ev, ref) {
-  const conf = PF.confirmation(ev);
+  const conf = PF.confirmation(ev, Object.keys(cs.reviewed || {}).filter(id => ev.corrections.some(c => c.id === id)).length);
   return h('div', { class: 'confcard' }, h('p', { class: 'mini-h' }, 'Booking confirmed'), h('p', { class: 'ref' }, ref),
     ev.status === 'Amber' ? h('p', { class: 'note-warn' }, 'Confirmed with warnings — please still sort the amber items before collection.') : null,
     conf.lines.map(l => h('p', null, l)), h('p', { class: 'mini-h' }, 'What happens next'), h('ol', null, conf.next.filter(n => !/^Fix every|^Review the amber/.test(n)).map(n => h('li', null, n))));
 }
-const chatCtx = { mode: 'chat', apply: a => send(a.say) };
+const chatReview = {
+  state: id => (cs.reviewed && cs.reviewed[id] ? (typeof cs.reviewed[id] === 'object' ? cs.reviewed[id] : { state: cs.reviewed[id] }) : null),
+  changedOnly: () => [],
+  accept: c => { cs.reviewed = { ...(cs.reviewed || {}), [c.id]: 'accepted' }; logEvent({ booking: 'CHAT', sku: c.sku || '', field: c.label, before: shown(c.entered), after: c.used, action: 'accepted', chat: true }); renderSheet(); },
+  acceptAll: list => { list.forEach(c => chatReview.accept(c)); },
+  change: (c, value) => { cs.reviewed = { ...(cs.reviewed || {}), [c.id]: { state: 'changed', value } }; send(`${c.sku ? c.label.toLowerCase() + ' for ' + c.sku : c.label.toLowerCase()} is ${value}`); },
+  redraw: () => renderSheet(),
+};
+const chatCtx = { mode: 'chat', apply: a => send(a.say), review: chatReview, reviewedCount: ev => ev.corrections.filter(c => cs.reviewed && cs.reviewed[c.id]).length, history: () => audit.filter(e => e.chat) };
 
 function renderSheet() {
   const s = $('#sheet'); s.innerHTML = '';
@@ -2290,7 +2423,8 @@ async function loadFiles(files) {
 function ingest(sheets, name) {
   const parsed = PF.parseSheets(sheets, { skipExample: $('#skip-ex').checked });
   fileData = { ...parsed, expected: readExpected(sheets), name, sheets };
-  Object.keys(overrides).forEach(k => delete overrides[k]); openRow = null; filter = 'All';
+  Object.keys(overrides).forEach(k => delete overrides[k]); Object.keys(reviews).forEach(k => delete reviews[k]);
+  audit.length = 0; auditSeen.clear(); openRow = null; filter = 'All';
   renderFile();
 }
 function showFileError(msg) { $('#file-results').innerHTML = ''; $('#file-results').append(h('p', { class: 'note-warn' }, msg)); }
@@ -2299,10 +2433,33 @@ function applyOv(raw, ov) {
   return { ...raw, ...ov.patch, items: raw.items.map((it, i) => ({ ...it, ...((ov.items || {})[i] || {}) })) };
 }
 function evalAll() { return fileData.bookings.map((b, i) => ({ i, raw: b, ev: PF.evaluate(applyOv(b, overrides[i]), { today: PF.todayISO() }), edited: !!overrides[i] })); }
+function toReview(r) { return r.ev.corrections.filter(c => !(reviews[r.i] || {})[c.id]).length; }
+function logFix(r, a) {
+  const b = r.ev.b; const cur = k => (k === 'carrierOverride' ? (r.ev.rec ? r.ev.rec.chosen.carrier : '') : k === 'ready' ? PF.fmtDate(b.ready) : b[k]);
+  if (a.patch) Object.entries(a.patch).forEach(([k, v]) => logEvent({ booking: b.id, field: FIELD_LABEL[k] || k, before: shown(cur(k)), after: v == null ? '(recommended)' : String(v), action: 'fix applied' }));
+  if (a.itemPatch) { const it = b.items[a.itemPatch.i] || {}; Object.entries(a.itemPatch.f).forEach(([k, v]) => logEvent({ booking: b.id, sku: it.sku || '', field: FIELD_LABEL[k] || k, before: shown(k === 'hs' ? (it.hs && it.hs.raw) : it[k]), after: String(v), action: 'fix applied' })); }
+}
+function fileReview(r, getCtx) {
+  const mine = () => (reviews[r.i] = reviews[r.i] || {});
+  const log = (c, action, after) => logEvent({ booking: r.ev.b.id, sku: c.sku || '', field: c.label, before: action === 'changed' ? c.used : shown(c.entered), after, action });
+  return {
+    state: id => (reviews[r.i] || {})[id],
+    changedOnly: cur => Object.values(reviews[r.i] || {}).filter(v => v.state === 'changed' && !cur.some(c => c.id === v.c.id)).map(v => v.c),
+    accept: c => { mine()[c.id] = { state: 'accepted', c }; log(c, 'accepted', c.used); renderFile(); },
+    acceptAll: list => { list.forEach(c => { mine()[c.id] = { state: 'accepted', c }; log(c, 'accepted', c.used); }); renderFile(); },
+    change: (c, value) => {
+      mine()[c.id] = { state: 'changed', value, c }; log(c, 'changed', value);
+      const it = c.scope === 'item' ? r.ev.b.items.findIndex(x => x.sku === c.sku) : -1;
+      getCtx().apply(c.scope === 'item' ? { itemPatch: { i: it, f: { [c.field]: value } }, audit: false } : { patch: { [c.field]: value }, audit: false });
+    },
+    redraw: () => renderFile(),
+  };
+}
 function renderFile() {
   const out = $('#file-results'); out.innerHTML = '';
   if (!fileData) return;
   const rows = evalAll();
+  rows.forEach(r => noteCorrections(r.ev));
   const cnt = s => rows.filter(r => r.ev.status === s).length;
   out.append(h('div', { class: 'file-head' },
     h('div', null, h('h2', null, `${rows.length} booking${rows.length === 1 ? '' : 's'} checked`), h('p', { class: 'muted' }, fileData.name)),
@@ -2324,33 +2481,41 @@ function renderFile() {
       h('td', null, h('span', { class: 'pill p-' + ev.status }, ev.status)),
       h('td', null, flagged.length ? flagged.map(f => h('span', { class: 'rchip s-' + f.s }, f.t)) : h('span', { class: 'muted' }, 'none')),
       h('td', null, !ev.rec ? '—' : ev.rec.chosen.fits === false && ev.rec.fixes.length ? h('span', null, h('s', { class: 'muted' }, ev.rec.chosen.carrier), ' → ', `${ev.rec.fixes[0].carrier}${ev.rec.fixes[0].type === 'repack' ? ` on ${ev.rec.fixes[0].pallets} plt` : ''} · ${PF.gbp(ev.rec.fixes[0].cost)}`) : `${ev.rec.chosen.carrier} · ${PF.gbp(ev.rec.chosen.cost)}`),
+      h('td', { class: 'num' }, toReview(r) || ''),
       exp ? h('td', null, e ? h('span', { class: String(e.status).toLowerCase() === ev.status.toLowerCase() ? 'match' : 'mismatch', title: e.rules || '' }, String(e.status).toLowerCase() === ev.status.toLowerCase() ? `✓ ${e.status}` : `✕ expected ${e.status}`) : '—') : null);
     tbody.append(tr);
     if (open) {
-      const ctx = { mode: 'file', apply: a => { const o = overrides[r.i] = overrides[r.i] || { patch: {}, items: {} }; if (a.patch) Object.assign(o.patch, a.patch); if (a.itemPatch) o.items[a.itemPatch.i] = { ...(o.items[a.itemPatch.i] || {}), ...a.itemPatch.f }; renderFile(); } };
-      tbody.append(h('tr', { class: 'detail' }, h('td', { colspan: exp ? 7 : 6 },
-        r.edited ? h('p', { class: 'edited-note' }, 'You’ve applied fixes here — the report shows the corrected booking. ', h('button', { class: 'linkbtn', type: 'button', onclick: () => { delete overrides[r.i]; renderFile(); } }, 'Undo my fixes')) : null,
+      const ctx = { mode: 'file', apply: a => { if (a.audit !== false) logFix(r, a); const o = overrides[r.i] = overrides[r.i] || { patch: {}, items: {} }; if (a.patch) Object.assign(o.patch, a.patch); if (a.itemPatch) o.items[a.itemPatch.i] = { ...(o.items[a.itemPatch.i] || {}), ...a.itemPatch.f }; renderFile(); },
+        review: fileReview(r, () => ctx), reviewedCount: e2 => e2.corrections.filter(c => (reviews[r.i] || {})[c.id]).length,
+        history: () => audit.filter(e2 => !e2.chat && e2.booking === r.ev.b.id) };
+      tbody.append(h('tr', { class: 'detail' }, h('td', { colspan: exp ? 8 : 7 },
+        r.edited ? h('p', { class: 'edited-note' }, 'You’ve applied fixes here — the report shows the corrected booking. ', h('button', { class: 'linkbtn', type: 'button', onclick: () => { logEvent({ booking: b.id, field: 'All fixes and reviews', before: 'edited', after: 'as uploaded', action: 'fixes undone' }); delete overrides[r.i]; delete reviews[r.i]; renderFile(); } }, 'Undo my fixes')) : null,
         reportEl(r.ev, ctx))));
     }
   });
   out.append(h('div', { class: 'tablewrap' }, h('table', { class: 'btable' },
-    h('thead', null, h('tr', null, h('th', null, 'Booking'), h('th', null, 'Seller'), h('th', null, 'Route'), h('th', null, 'Status'), h('th', null, 'Flags'), h('th', null, 'Carrier'), exp ? h('th', null, 'Expected') : null)), tbody)));
+    h('thead', null, h('tr', null, h('th', null, 'Booking'), h('th', null, 'Seller'), h('th', null, 'Route'), h('th', null, 'Status'), h('th', null, 'Flags'), h('th', null, 'Carrier'), h('th', { class: 'num' }, 'To review'), exp ? h('th', null, 'Expected') : null)), tbody)));
+  out.append(historyEl(audit.filter(e2 => !e2.chat), 'Audit trail') || h('p', { class: 'muted' }, 'Audit trail: no changes yet.'));
   if (exp) { const m = rows.filter(r => exp[r.ev.b.id.toUpperCase()]); const ok = m.filter(r => String(exp[r.ev.b.id.toUpperCase()].status).toLowerCase() === r.ev.status.toLowerCase()); out.append(h('p', { class: 'muted' }, `Expected-results sheet found: ${ok.length} of ${m.length} bookings match the expected status${rows.some(r => r.edited) ? ' (after your fixes)' : ''}.`)); }
 }
 async function exportResults() {
   const rows = evalAll();
-  const sum = [['Booking ID', 'Seller', 'Route', 'Priority', 'Status', 'Red issues', 'Amber issues', 'Flags', 'Carrier', 'Cost (GBP)', 'Transit (days)', 'Collection', 'Est. delivery', 'Fixed in app']];
+  const sum = [['Booking ID', 'Seller', 'Route', 'Priority', 'Status', 'Red issues', 'Amber issues', 'Flags', 'Carrier', 'Cost (GBP)', 'Transit (days)', 'Collection', 'Est. delivery', 'Fixed in app', 'To review']];
   const iss = [['Booking ID', 'Severity', 'Rule / check', 'What is wrong', 'How to fix']];
-  rows.forEach(({ ev, edited }) => {
+  rows.forEach(r => noteCorrections(r.ev));
+  rows.forEach(({ ev, edited }, ri) => {
     const b = ev.b; const flags = ev.checks.filter(c => c.status === 'fail' || c.status === 'check');
     sum.push([b.id, b.seller, `${b.originCity || '?'} → ${b.destCity || '?'}`, b.priorityUsed, ev.status, ev.reds, ev.ambers, [...flags.map(c => c.id), ...(ev.dataIssues.length ? ['Data'] : [])].join(', '), ev.rec ? (ev.rec.chosen.fits === false && ev.rec.fixes.length ? `${PF.label(ev.rec.chosen)} over limit → ${ev.rec.fixes[0].text}` : PF.label(ev.rec.chosen)) : '', ev.rec ? (ev.rec.chosen.fits === false && ev.rec.fixes.length ? ev.rec.fixes[0].cost : ev.rec.chosen.cost) : '', ev.rec ? ev.rec.chosen.transit : '', ev.eta ? PF.fmtDate(ev.eta.collect) : '', ev.eta ? PF.fmtDate(ev.eta.arrive) : '', edited ? 'Yes' : '']);
+    sum[sum.length - 1].push(toReview(rows[ri]) || '');
     ev.dataIssues.forEach(d => iss.push([b.id, d.sev, 'Data: ' + d.field, d.text, d.fix || '']));
     flags.forEach(c => iss.push([b.id, c.status === 'check' ? 'Amber' : c.sev, `${c.id} ${c.rule}`, c.detail, c.fix || '']));
   });
   const wb = XLSX.utils.book_new();
-  const s1 = XLSX.utils.aoa_to_sheet(sum); s1['!cols'] = [10, 22, 24, 12, 8, 9, 10, 22, 26, 10, 10, 12, 12, 10].map(w => ({ wch: w }));
+  const s1 = XLSX.utils.aoa_to_sheet(sum); s1['!cols'] = [10, 22, 24, 12, 8, 9, 10, 22, 26, 10, 10, 12, 12, 10, 10].map(w => ({ wch: w }));
   const s2 = XLSX.utils.aoa_to_sheet(iss); s2['!cols'] = [10, 9, 40, 70, 70].map(w => ({ wch: w }));
-  XLSX.utils.book_append_sheet(wb, s1, 'Summary'); XLSX.utils.book_append_sheet(wb, s2, 'Issues');
+  const cor = [['Time', 'Booking', 'SKU', 'Field', 'Before', 'After', 'By', 'Action'], ...audit.filter(e => !e.chat).map(e => [e.at, e.booking, e.sku, e.field, e.before, e.after, e.by, e.action])];
+  const s3 = XLSX.utils.aoa_to_sheet(cor); s3['!cols'] = [22, 10, 10, 24, 22, 22, 8, 16].map(w => ({ wch: w }));
+  XLSX.utils.book_append_sheet(wb, s1, 'Summary'); XLSX.utils.book_append_sheet(wb, s2, 'Issues'); XLSX.utils.book_append_sheet(wb, s3, 'Corrections');
   await saveFile('preflight-results.xlsx', XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
 }
 const drop = $('#drop'); const finput = $('#file-input');

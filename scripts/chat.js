@@ -288,7 +288,7 @@ function countryIn(s) {
 }
 
 // ---------- State ----------
-function newState() { return { booking: { seller: null, originCity: null, destCity: null, destCountry: null, destType: null, ready: null, priority: null, pallets: null, cartons: null, cartonsStated: false, declared: null, declaredStated: false, gross: null, appointment: null, carrierOverride: null, items: [] }, pending: null, complete: false, lastEval: null, lastItem: null, confirmed: null, turns: 0 }; }
+function newState() { return { booking: { seller: null, originCity: null, destCity: null, destCountry: null, destType: null, ready: null, priority: null, pallets: null, cartons: null, cartonsStated: false, declared: null, declaredStated: false, gross: null, appointment: null, carrierOverride: null, items: [] }, reviewed: {}, pending: null, complete: false, lastEval: null, lastItem: null, confirmed: null, turns: 0 }; }
 function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
 function deriveItems(b) {
@@ -314,8 +314,8 @@ function toRaw(st, id) {
   return {
     id: id || 'CHAT', source: 'chat', seller: b.seller, originCity: b.originCity, originCountry: 'United Kingdom', destCity: b.destCity, destCountry: b.destCountry,
     destType: b.destType, ready: b.ready, priority: b.priority, pallets: b.pallets, cartons: b.cartonsStated ? b.cartons : t.cartons, declared: b.declaredStated ? b.declared : t.value,
-    currency: 'GBP', gross: b.gross, appointment: b.destType === 'Business address' ? (b.appointment || 'No') : b.appointment, carrierOverride: b.carrierOverride,
-    items: b.items.map(it => ({ sku: it.sku, description: it.description, hs: it.hsUnknown ? '' : it.hs, qty: it.qty, price: it.price, upc: it.upc, cartons: it.cartons, unitWeight: it.unitWeight, coo: it.cooUnknown ? '' : it.coo })),
+    currency: 'GBP', derived: { cartons: !b.cartonsStated, declared: !b.declaredStated }, gross: b.gross, appointment: b.destType === 'Business address' ? (b.appointment || 'No') : b.appointment, carrierOverride: b.carrierOverride,
+    items: b.items.map(it => ({ sku: it.sku, description: it.description, hs: it.hsUnknown ? '' : it.hs, qty: it.qty, price: it.price, upc: it.upc, cartons: it.cartons, unitWeight: it.unitWeight, coo: it.cooUnknown ? '' : it.coo, derived: it.derived || {} })),
   };
 }
 
@@ -456,6 +456,15 @@ function turn(stIn, text, today) {
     reply.firstComplete = !st.complete; st.complete = true;
     if (ev.rec && !st.priceNoteShown) { reply.priceNote = PF.PRICE_NOTE; st.priceNoteShown = true; }
     st.lastEval = { checks: ev.checks.map(c => ({ id: c.id, status: c.status })), status: ev.status };
+    // Human review of automatic corrections: "looks right" accepts every one shown; nothing else changes.
+    st.reviewed = st.reviewed || {};
+    if (/^\s*(?:looks? (?:right|good|fine|ok(?:ay)?)|all (?:correct|good|fine)|that'?s (?:right|correct)|correct)\s*[.!]?\s*$/i.test(text)) {
+      const open = ev.corrections.filter(c => !st.reviewed[c.id]);
+      open.forEach(c => { st.reviewed[c.id] = 'accepted'; });
+      reply.accepted = open;
+      reply.notes.push(open.length ? `Thanks — ${open.length} automatic correction${open.length === 1 ? '' : 's'} marked as checked. Nothing in the booking changed.` : 'Nothing left to check.');
+    }
+    if (reply.firstComplete || P.intents.includes('summary')) reply.corrections = ev.corrections.filter(c => !st.reviewed[c.id]);
     if (P.intents.includes('confirm')) {
       if (ev.status === 'Red') reply.intent = 'confirm-blocked';
       else { st.confirmed = st.confirmed || refFor(st); reply.intent = 'confirmed'; reply.ref = st.confirmed; }

@@ -163,3 +163,15 @@ Every rule and extra check has at least one planted booking in `assets/Preflight
 | Advisory: fewer pallets by weight | Advisory | TB-24 (4 → 2 pallets, saving £340); also TB-15 |
 | Price disclaimer | Display | every booking with a carrier |
 | HS existence, leading-zero and suggestion checks (change `add-hs-code-validation`) | Advisory / R-01 fix text | TB-02 (TSH-01 blank → suggestion; SCK-01 `6115` → heading hint), TB-15 (MUG-01 blank → suggestion), TB-16 (`090240` text keeps its zero). Codes that are not in the tariff (`999999`) and 9-digit number cells are unit-tested only; that change adds planted bookings for them. |
+
+## I. Automatic corrections and audit trail
+| # | Input | Expected |
+|---|---|---|
+| I1 | TB-16 (HS `6912.00`, origin `UK`, Excel date, `yes`) | 4 corrections: HS `6912.00`→`691200` (format), Country of origin `UK`→`United Kingdom` (alias), ready `46350`→`24-11-2026` (date), appointment `yes`→`Yes` (format); status stays Green; "4" in To review |
+| I2 | Accept one row, then **Accept all** | Row shows "✓ Accepted"; count 4 → 3 → blank; values and status unchanged |
+| I3 | **Change…** TB-16 appointment to `No` | Booking re-checked: R-08 fails (Amber), tagged edited, row shows "Changed by you: No" |
+| I4 | **Undo my fixes** on TB-16 | Back to Green, 4 to review; audit gets `fixes undone`; no duplicate `auto-corrected` events |
+| I5 | TB-01 "Use 1 pallet on Carrier B", then Undo | Audit: `fix applied` (Pallets 2→1, Carrier A→B), then `fixes undone`, in that order |
+| I6 | Export results | Workbook sheets Summary (with "To review"), Issues, Corrections (Time, Booking, SKU, Field, Before, After, By, Action) |
+| I7 | Chat "Everything in one go", then "Looks right" | 3 derived corrections listed (cartons 90, total cartons 90, declared 5400) with a "Looks right" chip; afterwards marked checked, booking unchanged |
+| I8 | Number cell `90111` | No correction (leading-zero fix stays a recommendation) |

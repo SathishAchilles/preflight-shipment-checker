@@ -19,6 +19,54 @@ const VERDICT = { Red: 'Not ready — fix the red items before collection', Ambe
 
 // ---------- Downloads (claude.ai viewer capability, with a plain-browser fallback) ----------
 let DL = null;
+
+// ---------- Automatic-correction review and audit trail (session only; download the report to keep it) ----------
+const reviews = {}; // file bookingIndex -> { [correctionId]: { state: 'accepted' | 'changed', value, c } }
+const audit = []; const auditSeen = new Set();
+const FIELD_LABEL = { pallets: 'Pallets', cartons: 'Cartons', declared: 'Total declared value', gross: 'Total gross weight', appointment: 'Delivery appointment', ready: 'Ready to ship date', carrierOverride: 'Carrier', destType: 'Destination type', hs: 'HS code', coo: 'Country of origin', qty: 'Quantity', price: 'Unit price', upc: 'Units per carton', unitWeight: 'Unit weight' };
+const shown = v => (v == null || v === '' ? '(blank)' : String(v));
+function logEvent(e) { audit.push({ at: new Date().toISOString(), booking: '', sku: '', field: '', before: '', after: '', by: 'you', action: '', ...e }); }
+function noteCorrections(ev, extra = {}) {
+  ev.corrections.forEach(c => {
+    const k = `${extra.chat ? 'chat' : ev.b.id}|${c.id}|${c.entered}|${c.used}`;
+    if (auditSeen.has(k)) return; auditSeen.add(k);
+    logEvent({ booking: ev.b.id, sku: c.sku || '', field: c.label, before: shown(c.entered), after: c.used, by: 'system', action: 'auto-corrected', ...extra });
+  });
+}
+const hhmmss = iso => { const d = new Date(iso); return [d.getHours(), d.getMinutes(), d.getSeconds()].map(n => String(n).padStart(2, '0')).join(':'); };
+function historyEl(events, title, open = false) {
+  if (!events.length) return null;
+  return h('details', Object.assign({ class: 'audit' }, open ? { open: true } : {}), h('summary', null, `${title} (${events.length} event${events.length === 1 ? '' : 's'})`),
+    h('p', { class: 'note' }, 'Download the report to keep this record — it is not stored anywhere else.'),
+    h('div', { class: 'tablewrap' }, h('table', { class: 'ctable' },
+      h('thead', null, h('tr', null, ['Time', 'Booking', 'SKU', 'Field', 'Before', 'After', 'By', 'Action'].map(x => h('th', null, x)))),
+      h('tbody', null, [...events].reverse().map(e => h('tr', null, h('td', null, hhmmss(e.at)), h('td', null, e.booking), h('td', null, e.sku || ''), h('td', null, e.field), h('td', null, e.before), h('td', null, e.after), h('td', null, e.by), h('td', null, e.action)))))));
+}
+function reviewEl(ev, ctx) {
+  const R = ctx.review; if (!R) return null;
+  const cur = ev.corrections; const rows = [...cur, ...R.changedOnly(cur)];
+  if (!rows.length) return null;
+  const open = cur.filter(c => !R.state(c.id));
+  const editCell = (c) => (e2) => {
+    const td = e2.target.closest('td'); td.innerHTML = '';
+    const inp = h('input', { type: 'text', value: c.used, 'aria-label': `New value for ${c.label}` });
+    const save = () => { const v = inp.value.trim(); if (v) R.change(c, v); };
+    inp.addEventListener('keydown', k => { if (k.key === 'Enter') { k.preventDefault(); save(); } if (k.key === 'Escape') R.redraw(); });
+    td.append(h('span', { class: 'rv-edit' }, inp, ' ', h('button', { class: 'btn tiny', type: 'button', onclick: save }, 'Save'), ' ', h('button', { class: 'linkbtn', type: 'button', onclick: () => R.redraw() }, 'Cancel')));
+    inp.focus(); inp.select();
+  };
+  return h('section', { class: 'review' },
+    h('div', { class: 'review-head' }, h('h3', null, 'Automatic corrections — please review'),
+      open.length ? h('button', { class: 'btn small', type: 'button', onclick: () => R.acceptAll(open) }, 'Accept all') : null),
+    h('p', { class: 'note' }, 'We changed these values before checking. Accept each one, or change it. Reviewing never changes the status.'),
+    h('div', { class: 'tablewrap' }, h('table', { class: 'ctable rvtable' },
+      h('thead', null, h('tr', null, ['Field', 'You entered', 'We used', 'Why', ''].map(x => h('th', null, x)))),
+      h('tbody', null, rows.map(c => { const st = R.state(c.id); return h('tr', null,
+        h('th', { scope: 'row' }, c.sku ? `${c.label} (${c.sku})` : c.label), h('td', null, shown(c.entered)), h('td', null, c.used), h('td', null, c.why),
+        h('td', null, st ? h('span', { class: st.state === 'accepted' ? 'rv-ok' : 'rv-ch' }, st.state === 'accepted' ? '✓ Accepted' : `✎ Changed by you: ${st.value}`)
+          : h('span', null, h('button', { class: 'btn tiny', type: 'button', onclick: () => R.accept(c) }, 'Accept'), ' ', h('button', { class: 'btn tiny ghost', type: 'button', onclick: editCell(c) }, 'Change…')))); })))),
+    h('p', { class: 'muted' }, open.length ? `${open.length} to review` : 'All reviewed'));
+}
 try { if (window.claude && typeof window.claude.use === 'function') window.claude.use('downloads').then(d => { DL = d; }).catch(() => {}); } catch (e) {}
 async function saveFile(name, buf) {
   if (DL) { try { await DL.save({ filename: name, data: new Blob([buf]) }); return; } catch (e) { if (e && e.code === 'declined') return; } }
@@ -130,7 +178,7 @@ function reportEl(ev, ctx) {
       planEl(ev, ctx));
   }
 
-  const conf = PF.confirmation(ev);
+  const conf = PF.confirmation(ev, ctx.reviewedCount ? ctx.reviewedCount(ev) : 0);
   const confEl = conf ? h('section', { class: 'confirm' },
     h('h3', null, 'Booking summary'),
     h('p', { class: 'conf-head s-' + status }, conf.head),
@@ -148,7 +196,8 @@ function reportEl(ev, ctx) {
       h('tfoot', null, h('tr', null, h('td', { colspan: 6 }, 'Total of lines · declared on booking'), h('td', { class: 'num' }, lines.every(x => x != null) ? PF.gbp(lines.reduce((a, c2) => a + c2, 0)) : '—', h('br'), h('small', null, PF.gbp(b.declared))), h('td', { colspan: 2 })))))) : null;
 
   const stamp = hsStamp() ? h('p', { class: 'note hsstamp' }, hsStamp()) : null;
-  return h('div', { class: 'report' }, head, issueList, passedEl, adv, carrierEl, confEl, inv, stamp);
+  const hist = ctx.history ? historyEl(ctx.history(ev), 'History for this booking') : null;
+  return h('div', { class: 'report' }, head, reviewEl(ev, ctx), issueList, passedEl, adv, carrierEl, confEl, inv, stamp, hist);
 }
 
 function planEl(ev, ctx) {
@@ -212,6 +261,7 @@ function send(text) {
   if (reply.intent === 'reset') { renderSheet(); bubble('bot', h('p', null, reply.ask)); return; }
   if (reply.intent === 'help') parts.push(h('p', null, 'Tell me about the shipment in plain words. You can change anything at any time — “add a pallet”, “send it to Lyon instead”, “HS code for the mugs is 691200”, “switch to carrier B”. Say “what’s wrong?” for the report, “confirm” to book, or “start over”.'));
   reply.notes.forEach(n => parts.push(h('p', { class: 'note-warn' }, n)));
+  if (cs.complete || reply.status) reply.changes.filter(c => !c.first && c.from !== '—').forEach(c => logEvent({ booking: 'CHAT', field: c.label, before: String(c.from), after: String(c.to), action: 'changed', chat: true }));
   const ch = reply.changes.filter(c => c.field !== 'destCountry' || !reply.changes.some(x => x.field === 'destCity'));
   if (ch.length) parts.push(h('div', { class: 'got' }, h('p', { class: 'mini-h' }, cs.turns === 1 || ch.every(c => c.first) ? 'Got it' : 'Updated'), h('ul', null, groupChanges(ch).map(t => h('li', null, t)))));
   if (reply.derived.length) parts.push(h('p', { class: 'muted' }, 'Worked out: ' + reply.derived.join(' ')));
@@ -222,9 +272,14 @@ function send(text) {
     if (reply.diff.length) parts.push(h('div', { class: 'got' }, h('p', { class: 'mini-h' }, 'Checks re-run'), h('ul', null, reply.diff.map(d => h('li', { class: 'd-' + d.to }, `${d.id} now ${STATUS_WORD[d.to]}`)))));
     if (reply.firstComplete) parts.push(h('p', null, 'That’s everything I need. Pre-flight result:'));
     parts.push(miniVerdict(ev, reply.priceNote));
+    noteCorrections(ev, { chat: true });
+    (reply.accepted || []).forEach(c => logEvent({ booking: 'CHAT', sku: c.sku || '', field: c.label, before: shown(c.entered), after: c.used, action: 'accepted', chat: true }));
+    if (reply.corrections && reply.corrections.length) parts.push(h('div', { class: 'got' }, h('p', { class: 'mini-h' }, 'I worked out or adjusted these — please check'),
+      h('ul', null, reply.corrections.map(c => h('li', null, `${c.sku ? c.label + ' (' + c.sku + ')' : c.label}: ${shown(c.entered)} → ${c.used} (${c.why})`)))));
     if (reply.intent === 'confirm-blocked') parts.push(h('p', { class: 'note-warn' }, `I can’t confirm while there ${ev.reds === 1 ? 'is 1 red issue' : 'are ' + ev.reds + ' red issues'} — red means the shipment would be stopped. Fix ${ev.reds === 1 ? 'it' : 'them'} (the buttons in the report do most of it) and say “confirm” again.`));
     if (reply.intent === 'confirmed') parts.push(confCard(ev, reply.ref));
     if (reply.intent !== 'confirmed') chips = ev.status === 'Red' ? ['What’s wrong?'] : ['Confirm booking', 'What’s wrong?'];
+    if (chips && reply.corrections && reply.corrections.length) chips = ['Looks right', ...chips];
     if (ev.status !== 'Red' && reply.intent !== 'confirmed' && !reply.firstComplete && !reply.diff.length && !ch.length && !reply.nothing) {/* summary only */}
   } else {
     if (reply.intent === 'confirm-incomplete') parts.push(h('p', null, 'Not yet — I still need a few details first.'));
@@ -249,12 +304,20 @@ function miniVerdict(ev, priceNote) {
     h('button', { class: 'linkbtn only-narrow', type: 'button', onclick: () => $('#sheet').scrollIntoView({ behavior: 'smooth' }) }, 'See the full report ↓'));
 }
 function confCard(ev, ref) {
-  const conf = PF.confirmation(ev);
+  const conf = PF.confirmation(ev, Object.keys(cs.reviewed || {}).filter(id => ev.corrections.some(c => c.id === id)).length);
   return h('div', { class: 'confcard' }, h('p', { class: 'mini-h' }, 'Booking confirmed'), h('p', { class: 'ref' }, ref),
     ev.status === 'Amber' ? h('p', { class: 'note-warn' }, 'Confirmed with warnings — please still sort the amber items before collection.') : null,
     conf.lines.map(l => h('p', null, l)), h('p', { class: 'mini-h' }, 'What happens next'), h('ol', null, conf.next.filter(n => !/^Fix every|^Review the amber/.test(n)).map(n => h('li', null, n))));
 }
-const chatCtx = { mode: 'chat', apply: a => send(a.say) };
+const chatReview = {
+  state: id => (cs.reviewed && cs.reviewed[id] ? (typeof cs.reviewed[id] === 'object' ? cs.reviewed[id] : { state: cs.reviewed[id] }) : null),
+  changedOnly: () => [],
+  accept: c => { cs.reviewed = { ...(cs.reviewed || {}), [c.id]: 'accepted' }; logEvent({ booking: 'CHAT', sku: c.sku || '', field: c.label, before: shown(c.entered), after: c.used, action: 'accepted', chat: true }); renderSheet(); },
+  acceptAll: list => { list.forEach(c => chatReview.accept(c)); },
+  change: (c, value) => { cs.reviewed = { ...(cs.reviewed || {}), [c.id]: { state: 'changed', value } }; send(`${c.sku ? c.label.toLowerCase() + ' for ' + c.sku : c.label.toLowerCase()} is ${value}`); },
+  redraw: () => renderSheet(),
+};
+const chatCtx = { mode: 'chat', apply: a => send(a.say), review: chatReview, reviewedCount: ev => ev.corrections.filter(c => cs.reviewed && cs.reviewed[c.id]).length, history: () => audit.filter(e => e.chat) };
 
 function renderSheet() {
   const s = $('#sheet'); s.innerHTML = '';
@@ -319,7 +382,8 @@ async function loadFiles(files) {
 function ingest(sheets, name) {
   const parsed = PF.parseSheets(sheets, { skipExample: $('#skip-ex').checked });
   fileData = { ...parsed, expected: readExpected(sheets), name, sheets };
-  Object.keys(overrides).forEach(k => delete overrides[k]); openRow = null; filter = 'All';
+  Object.keys(overrides).forEach(k => delete overrides[k]); Object.keys(reviews).forEach(k => delete reviews[k]);
+  audit.length = 0; auditSeen.clear(); openRow = null; filter = 'All';
   renderFile();
 }
 function showFileError(msg) { $('#file-results').innerHTML = ''; $('#file-results').append(h('p', { class: 'note-warn' }, msg)); }
@@ -328,10 +392,33 @@ function applyOv(raw, ov) {
   return { ...raw, ...ov.patch, items: raw.items.map((it, i) => ({ ...it, ...((ov.items || {})[i] || {}) })) };
 }
 function evalAll() { return fileData.bookings.map((b, i) => ({ i, raw: b, ev: PF.evaluate(applyOv(b, overrides[i]), { today: PF.todayISO() }), edited: !!overrides[i] })); }
+function toReview(r) { return r.ev.corrections.filter(c => !(reviews[r.i] || {})[c.id]).length; }
+function logFix(r, a) {
+  const b = r.ev.b; const cur = k => (k === 'carrierOverride' ? (r.ev.rec ? r.ev.rec.chosen.carrier : '') : k === 'ready' ? PF.fmtDate(b.ready) : b[k]);
+  if (a.patch) Object.entries(a.patch).forEach(([k, v]) => logEvent({ booking: b.id, field: FIELD_LABEL[k] || k, before: shown(cur(k)), after: v == null ? '(recommended)' : String(v), action: 'fix applied' }));
+  if (a.itemPatch) { const it = b.items[a.itemPatch.i] || {}; Object.entries(a.itemPatch.f).forEach(([k, v]) => logEvent({ booking: b.id, sku: it.sku || '', field: FIELD_LABEL[k] || k, before: shown(k === 'hs' ? (it.hs && it.hs.raw) : it[k]), after: String(v), action: 'fix applied' })); }
+}
+function fileReview(r, getCtx) {
+  const mine = () => (reviews[r.i] = reviews[r.i] || {});
+  const log = (c, action, after) => logEvent({ booking: r.ev.b.id, sku: c.sku || '', field: c.label, before: action === 'changed' ? c.used : shown(c.entered), after, action });
+  return {
+    state: id => (reviews[r.i] || {})[id],
+    changedOnly: cur => Object.values(reviews[r.i] || {}).filter(v => v.state === 'changed' && !cur.some(c => c.id === v.c.id)).map(v => v.c),
+    accept: c => { mine()[c.id] = { state: 'accepted', c }; log(c, 'accepted', c.used); renderFile(); },
+    acceptAll: list => { list.forEach(c => { mine()[c.id] = { state: 'accepted', c }; log(c, 'accepted', c.used); }); renderFile(); },
+    change: (c, value) => {
+      mine()[c.id] = { state: 'changed', value, c }; log(c, 'changed', value);
+      const it = c.scope === 'item' ? r.ev.b.items.findIndex(x => x.sku === c.sku) : -1;
+      getCtx().apply(c.scope === 'item' ? { itemPatch: { i: it, f: { [c.field]: value } }, audit: false } : { patch: { [c.field]: value }, audit: false });
+    },
+    redraw: () => renderFile(),
+  };
+}
 function renderFile() {
   const out = $('#file-results'); out.innerHTML = '';
   if (!fileData) return;
   const rows = evalAll();
+  rows.forEach(r => noteCorrections(r.ev));
   const cnt = s => rows.filter(r => r.ev.status === s).length;
   out.append(h('div', { class: 'file-head' },
     h('div', null, h('h2', null, `${rows.length} booking${rows.length === 1 ? '' : 's'} checked`), h('p', { class: 'muted' }, fileData.name)),
@@ -353,33 +440,41 @@ function renderFile() {
       h('td', null, h('span', { class: 'pill p-' + ev.status }, ev.status)),
       h('td', null, flagged.length ? flagged.map(f => h('span', { class: 'rchip s-' + f.s }, f.t)) : h('span', { class: 'muted' }, 'none')),
       h('td', null, !ev.rec ? '—' : ev.rec.chosen.fits === false && ev.rec.fixes.length ? h('span', null, h('s', { class: 'muted' }, ev.rec.chosen.carrier), ' → ', `${ev.rec.fixes[0].carrier}${ev.rec.fixes[0].type === 'repack' ? ` on ${ev.rec.fixes[0].pallets} plt` : ''} · ${PF.gbp(ev.rec.fixes[0].cost)}`) : `${ev.rec.chosen.carrier} · ${PF.gbp(ev.rec.chosen.cost)}`),
+      h('td', { class: 'num' }, toReview(r) || ''),
       exp ? h('td', null, e ? h('span', { class: String(e.status).toLowerCase() === ev.status.toLowerCase() ? 'match' : 'mismatch', title: e.rules || '' }, String(e.status).toLowerCase() === ev.status.toLowerCase() ? `✓ ${e.status}` : `✕ expected ${e.status}`) : '—') : null);
     tbody.append(tr);
     if (open) {
-      const ctx = { mode: 'file', apply: a => { const o = overrides[r.i] = overrides[r.i] || { patch: {}, items: {} }; if (a.patch) Object.assign(o.patch, a.patch); if (a.itemPatch) o.items[a.itemPatch.i] = { ...(o.items[a.itemPatch.i] || {}), ...a.itemPatch.f }; renderFile(); } };
-      tbody.append(h('tr', { class: 'detail' }, h('td', { colspan: exp ? 7 : 6 },
-        r.edited ? h('p', { class: 'edited-note' }, 'You’ve applied fixes here — the report shows the corrected booking. ', h('button', { class: 'linkbtn', type: 'button', onclick: () => { delete overrides[r.i]; renderFile(); } }, 'Undo my fixes')) : null,
+      const ctx = { mode: 'file', apply: a => { if (a.audit !== false) logFix(r, a); const o = overrides[r.i] = overrides[r.i] || { patch: {}, items: {} }; if (a.patch) Object.assign(o.patch, a.patch); if (a.itemPatch) o.items[a.itemPatch.i] = { ...(o.items[a.itemPatch.i] || {}), ...a.itemPatch.f }; renderFile(); },
+        review: fileReview(r, () => ctx), reviewedCount: e2 => e2.corrections.filter(c => (reviews[r.i] || {})[c.id]).length,
+        history: () => audit.filter(e2 => !e2.chat && e2.booking === r.ev.b.id) };
+      tbody.append(h('tr', { class: 'detail' }, h('td', { colspan: exp ? 8 : 7 },
+        r.edited ? h('p', { class: 'edited-note' }, 'You’ve applied fixes here — the report shows the corrected booking. ', h('button', { class: 'linkbtn', type: 'button', onclick: () => { logEvent({ booking: b.id, field: 'All fixes and reviews', before: 'edited', after: 'as uploaded', action: 'fixes undone' }); delete overrides[r.i]; delete reviews[r.i]; renderFile(); } }, 'Undo my fixes')) : null,
         reportEl(r.ev, ctx))));
     }
   });
   out.append(h('div', { class: 'tablewrap' }, h('table', { class: 'btable' },
-    h('thead', null, h('tr', null, h('th', null, 'Booking'), h('th', null, 'Seller'), h('th', null, 'Route'), h('th', null, 'Status'), h('th', null, 'Flags'), h('th', null, 'Carrier'), exp ? h('th', null, 'Expected') : null)), tbody)));
+    h('thead', null, h('tr', null, h('th', null, 'Booking'), h('th', null, 'Seller'), h('th', null, 'Route'), h('th', null, 'Status'), h('th', null, 'Flags'), h('th', null, 'Carrier'), h('th', { class: 'num' }, 'To review'), exp ? h('th', null, 'Expected') : null)), tbody)));
+  out.append(historyEl(audit.filter(e2 => !e2.chat), 'Audit trail') || h('p', { class: 'muted' }, 'Audit trail: no changes yet.'));
   if (exp) { const m = rows.filter(r => exp[r.ev.b.id.toUpperCase()]); const ok = m.filter(r => String(exp[r.ev.b.id.toUpperCase()].status).toLowerCase() === r.ev.status.toLowerCase()); out.append(h('p', { class: 'muted' }, `Expected-results sheet found: ${ok.length} of ${m.length} bookings match the expected status${rows.some(r => r.edited) ? ' (after your fixes)' : ''}.`)); }
 }
 async function exportResults() {
   const rows = evalAll();
-  const sum = [['Booking ID', 'Seller', 'Route', 'Priority', 'Status', 'Red issues', 'Amber issues', 'Flags', 'Carrier', 'Cost (GBP)', 'Transit (days)', 'Collection', 'Est. delivery', 'Fixed in app']];
+  const sum = [['Booking ID', 'Seller', 'Route', 'Priority', 'Status', 'Red issues', 'Amber issues', 'Flags', 'Carrier', 'Cost (GBP)', 'Transit (days)', 'Collection', 'Est. delivery', 'Fixed in app', 'To review']];
   const iss = [['Booking ID', 'Severity', 'Rule / check', 'What is wrong', 'How to fix']];
-  rows.forEach(({ ev, edited }) => {
+  rows.forEach(r => noteCorrections(r.ev));
+  rows.forEach(({ ev, edited }, ri) => {
     const b = ev.b; const flags = ev.checks.filter(c => c.status === 'fail' || c.status === 'check');
     sum.push([b.id, b.seller, `${b.originCity || '?'} → ${b.destCity || '?'}`, b.priorityUsed, ev.status, ev.reds, ev.ambers, [...flags.map(c => c.id), ...(ev.dataIssues.length ? ['Data'] : [])].join(', '), ev.rec ? (ev.rec.chosen.fits === false && ev.rec.fixes.length ? `${PF.label(ev.rec.chosen)} over limit → ${ev.rec.fixes[0].text}` : PF.label(ev.rec.chosen)) : '', ev.rec ? (ev.rec.chosen.fits === false && ev.rec.fixes.length ? ev.rec.fixes[0].cost : ev.rec.chosen.cost) : '', ev.rec ? ev.rec.chosen.transit : '', ev.eta ? PF.fmtDate(ev.eta.collect) : '', ev.eta ? PF.fmtDate(ev.eta.arrive) : '', edited ? 'Yes' : '']);
+    sum[sum.length - 1].push(toReview(rows[ri]) || '');
     ev.dataIssues.forEach(d => iss.push([b.id, d.sev, 'Data: ' + d.field, d.text, d.fix || '']));
     flags.forEach(c => iss.push([b.id, c.status === 'check' ? 'Amber' : c.sev, `${c.id} ${c.rule}`, c.detail, c.fix || '']));
   });
   const wb = XLSX.utils.book_new();
-  const s1 = XLSX.utils.aoa_to_sheet(sum); s1['!cols'] = [10, 22, 24, 12, 8, 9, 10, 22, 26, 10, 10, 12, 12, 10].map(w => ({ wch: w }));
+  const s1 = XLSX.utils.aoa_to_sheet(sum); s1['!cols'] = [10, 22, 24, 12, 8, 9, 10, 22, 26, 10, 10, 12, 12, 10, 10].map(w => ({ wch: w }));
   const s2 = XLSX.utils.aoa_to_sheet(iss); s2['!cols'] = [10, 9, 40, 70, 70].map(w => ({ wch: w }));
-  XLSX.utils.book_append_sheet(wb, s1, 'Summary'); XLSX.utils.book_append_sheet(wb, s2, 'Issues');
+  const cor = [['Time', 'Booking', 'SKU', 'Field', 'Before', 'After', 'By', 'Action'], ...audit.filter(e => !e.chat).map(e => [e.at, e.booking, e.sku, e.field, e.before, e.after, e.by, e.action])];
+  const s3 = XLSX.utils.aoa_to_sheet(cor); s3['!cols'] = [22, 10, 10, 24, 22, 22, 8, 16].map(w => ({ wch: w }));
+  XLSX.utils.book_append_sheet(wb, s1, 'Summary'); XLSX.utils.book_append_sheet(wb, s2, 'Issues'); XLSX.utils.book_append_sheet(wb, s3, 'Corrections');
   await saveFile('preflight-results.xlsx', XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
 }
 const drop = $('#drop'); const finput = $('#file-input');

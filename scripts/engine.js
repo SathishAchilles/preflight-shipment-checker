@@ -527,13 +527,28 @@ function normaliseBooking(raw) {
   const red = (field, text, fix) => issues.push({ sev: 'Red', field, text, fix });
   const amber = (field, text, fix) => issues.push({ sev: 'Amber', field, text, fix });
   const b = { id: raw.id || 'NEW', source: raw.source || 'chat', duplicateOf: raw.duplicateOf, carrierOverride: raw.carrierOverride || null };
+  // Automatic corrections: every value used that differs from what was entered (beyond surrounding spaces).
+  // Recorded for human review only; they never change a status.
+  b.corrections = [];
+  const corr = (scope, field, label, rawV, used, kind, why, sku) => {
+    if (used == null || (typeof used === 'number' && !isFinite(used))) return;
+    const blank = isBlank(rawV);
+    if (blank && kind !== 'default' && kind !== 'derived') return;
+    const entered = blank ? '' : clean(rawV);
+    if (!blank && entered === String(used)) return;
+    b.corrections.push({ id: `${scope}:${sku || ''}:${field}`, scope, field, label, sku: sku || null, entered, used: String(used), kind, why });
+  };
+  const caseOrAlias = (r, u) => (clean(r).toLowerCase() === String(u).toLowerCase() ? 'format' : 'alias');
 
   b.seller = clean(raw.seller);
   if (!b.seller) red('Seller name', 'Seller name is missing.', 'Add the business name that is sending the goods — it goes on the commercial invoice.');
 
   b.originCity = normCity(raw.originCity, ORIGIN_CITIES);
   if (!b.originCity) red('Origin city', isBlank(raw.originCity) ? 'Origin city is missing.' : `Origin city “${clean(raw.originCity)}” isn't a collection point we serve.`, `Use one of: ${ORIGIN_CITIES.join(', ')}.`);
+  if (b.originCity) corr('booking', 'originCity', 'Origin city', raw.originCity, b.originCity, caseOrAlias(raw.originCity, b.originCity), 'Recognised city name');
   b.originCountry = isBlank(raw.originCountry) ? 'United Kingdom' : normCountry(raw.originCountry);
+  if (isBlank(raw.originCountry)) corr('booking', 'originCountry', 'Origin country', raw.originCountry, 'United Kingdom', 'default', 'Every route starts in the United Kingdom');
+  else if (b.originCountry) corr('booking', 'originCountry', 'Origin country', raw.originCountry, b.originCountry, caseOrAlias(raw.originCountry, b.originCountry), 'Recognised country name');
   if (b.originCountry !== 'United Kingdom') red('Origin country', `Origin country “${clean(raw.originCountry)}” isn't served — every route starts in the United Kingdom.`, 'Set origin country to United Kingdom.');
 
   b.destCity = normCity(raw.destCity, Object.keys(CITY_COUNTRY));
@@ -542,17 +557,26 @@ function normaliseBooking(raw) {
   if (!isBlank(raw.destCountry) && !['Germany', 'France', 'Netherlands'].includes(dc)) red('Destination country', `Destination country “${clean(raw.destCountry)}” has no carrier route.`, 'Routes run to Germany, France or the Netherlands only.');
   if (b.destCity && dc && CITY_COUNTRY[b.destCity] !== dc) red('Destination', `${b.destCity} is in ${CITY_COUNTRY[b.destCity]}, but the destination country says ${dc}.`, `Correct either the city or the country so they match (e.g. ${b.destCity} · ${CITY_COUNTRY[b.destCity]}).`);
   b.destCountry = b.destCity ? CITY_COUNTRY[b.destCity] : (['Germany', 'France', 'Netherlands'].includes(dc) ? dc : null);
+  if (b.destCity) corr('booking', 'destCity', 'Destination city', raw.destCity, b.destCity, caseOrAlias(raw.destCity, b.destCity), 'Recognised city name');
+  if (isBlank(raw.destCountry) && b.destCountry) corr('booking', 'destCountry', 'Destination country', raw.destCountry, b.destCountry, 'derived', `Taken from the destination city (${b.destCity})`);
+  else if (dc && b.destCountry === dc) corr('booking', 'destCountry', 'Destination country', raw.destCountry, dc, caseOrAlias(raw.destCountry, dc), 'Recognised country name');
 
   b.destType = normDestType(raw.destType);
+  if (b.destType) corr('booking', 'destType', 'Destination type', raw.destType, b.destType, caseOrAlias(raw.destType, b.destType), `Read as ${b.destType}`);
   if (!b.destType) red('Destination type', isBlank(raw.destType) ? 'Destination type is missing.' : `Destination type “${clean(raw.destType)}” isn't recognised.`, 'Set it to Warehouse or Business address.');
 
   const d = typeof raw.ready === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.ready) && raw.readyIsISO ? { iso: raw.ready } : parseSheetDate(raw.ready);
   b.ready = d.iso || null;
+  if (b.ready && !raw.readyIsISO && raw.source !== 'chat' && !(typeof raw.ready === 'string' && /^\d{2}-\d{2}-\d{4}$/.test(clean(raw.ready)))) {
+    const entered = raw.ready instanceof Date ? raw.ready.toISOString().slice(0, 10) : raw.ready;
+    corr('booking', 'ready', 'Ready to ship date', entered, fmtDate(b.ready), 'date', typeof raw.ready === 'number' || raw.ready instanceof Date ? 'Excel date cell read as DD-MM-YYYY' : 'Date read as DD-MM-YYYY');
+  }
   if (!b.ready) red('Ready to ship date', d.error === 'missing' ? 'Ready to ship date is missing.' : `Ready to ship date ${d.error}.`, 'Enter the collection date as DD-MM-YYYY.');
 
   b.priority = PRIORITIES.includes(raw.priority) ? raw.priority : normPriority(raw.priority);
   if (!b.priority) amber('Seller priority', isBlank(raw.priority) ? 'Seller priority is missing — recommending on a Balanced basis.' : `Seller priority “${clean(raw.priority)}” isn't recognised — recommending on a Balanced basis.`, 'Choose Cheapest, Fastest, Most reliable or Balanced.');
   b.priorityUsed = b.priority || 'Balanced';
+  if (b.priority && !isBlank(raw.priority) && !PRIORITIES.includes(raw.priority)) corr('booking', 'priority', 'Seller priority', raw.priority, b.priority, caseOrAlias(raw.priority, b.priority), 'Recognised priority');
 
   const count = (field, label, allowZero = false) => {
     const v = num(raw[field]);
@@ -560,6 +584,7 @@ function normaliseBooking(raw) {
     if (isNaN(v)) { red(label, `${label} “${clean(raw[field])}” isn't a number.`, `Enter ${label.toLowerCase()} as a whole number.`); return null; }
     if (v < 0 || (!allowZero && v === 0)) { red(label, `${label} is ${v} — it must be more than zero.`, `Enter the real ${label.toLowerCase()}.`); return v === 0 ? 0 : null; }
     if (!Number.isInteger(v)) { red(label, `${label} is ${v} — it must be a whole number.`, `Round to the real count of ${label.toLowerCase()}.`); }
+    if (typeof raw[field] === 'string') corr('booking', field, label, raw[field], v, 'format', 'Removed £, commas or units');
     return v;
   };
   const amount = (field, label) => {
@@ -567,6 +592,7 @@ function normaliseBooking(raw) {
     if (v == null) { red(label, `${label} is missing.`, `Enter the ${label.toLowerCase()}.`); return null; }
     if (isNaN(v)) { red(label, `${label} “${clean(raw[field])}” isn't a number.`, `Enter ${label.toLowerCase()} as a number.`); return null; }
     if (v <= 0) { red(label, `${label} is ${v} — it must be more than zero.`, `Enter the real ${label.toLowerCase()}.`); return v; }
+    if (typeof raw[field] === 'string') corr('booking', field, label, raw[field], v, 'format', 'Removed £, commas or units');
     return v;
   };
   b.pallets = count('pallets', 'Pallets');
@@ -574,9 +600,14 @@ function normaliseBooking(raw) {
   b.declared = amount('declared', 'Total declared value');
   b.gross = amount('gross', 'Total gross weight');
   b.currency = isBlank(raw.currency) ? 'GBP' : clean(raw.currency).toUpperCase();
+  if (isBlank(raw.currency)) corr('booking', 'currency', 'Currency', raw.currency, 'GBP', 'default', 'Only GBP is supported');
+  else if (b.currency === 'GBP') corr('booking', 'currency', 'Currency', raw.currency, 'GBP', 'format', 'Currency code in capitals');
+  if (raw.derived && raw.derived.cartons && isNum(b.cartons)) corr('booking', 'cartons', 'Cartons', '', b.cartons, 'derived', 'Worked out: sum of the item cartons');
+  if (raw.derived && raw.derived.declared && isNum(b.declared)) corr('booking', 'declared', 'Total declared value', '', b.declared, 'derived', 'Worked out: quantity × unit price across items');
   if (b.currency !== 'GBP') red('Currency', `Currency is ${clean(raw.currency)} — this service books in GBP only.`, 'Convert all money values to GBP and set currency to GBP.');
 
   b.appointment = normYesNo(raw.appointment);
+  if (b.appointment && !isBlank(raw.appointment)) corr('booking', 'appointment', 'Delivery appointment', raw.appointment, b.appointment, caseOrAlias(raw.appointment, b.appointment), 'Read as Yes/No');
   if (!b.appointment && b.destType === 'Warehouse') amber('Delivery appointment', isBlank(raw.appointment) ? 'Delivery appointment answer is missing — treated as not booked.' : `Delivery appointment “${clean(raw.appointment)}” isn't Yes/No — treated as not booked.`, 'Answer Yes or No.');
 
   if (b.duplicateOf) red('Booking ID', `Booking ID ${b.id} is used more than once (first on row ${b.duplicateOf}). Items can't be matched safely.`, 'Give every booking a unique ID.');
@@ -587,6 +618,7 @@ function normaliseBooking(raw) {
     if (!clean(it.sku)) amber(`Item ${i + 1}`, `Item line ${i + 1}${it.rowNum ? ' (row ' + it.rowNum + ')' : ''} has no SKU.`, 'Add the seller SKU so the warehouse can match cartons.');
     if (!n.description) red(lab, `${lab} has no description.`, 'Describe the product in plain words — customs and the dangerous-goods check need it.');
     n.hs = normHS(it.hs);
+    if (!n.hs.blank && !n.hs.hasLetters && n.hs.digits) corr('item', 'hs', 'HS code', it.hs, n.hs.digits, 'format', 'HS digits read without dots, spaces or prefix', n.sku);
     n.hsRec = hsRecommend(n.hs);
     n.hsSug = n.hs.blank || n.hs.hasLetters || n.hs.digits.length < 6 ? hsSuggest(it.description) : null;   // recommendation only
     const v = (f, label, isCount) => {
@@ -595,6 +627,7 @@ function normaliseBooking(raw) {
       if (isNaN(x)) { red(lab, `${lab}: ${label} “${clean(it[f])}” isn't a number.`, `Enter ${label} as a number.`); return null; }
       if (x <= 0) { red(lab, `${lab}: ${label} is ${x} — it must be more than zero.`, `Enter the real ${label}.`); return x; }
       if (isCount && !Number.isInteger(x)) red(lab, `${lab}: ${label} is ${x} — it must be a whole number.`, `Use a whole number for ${label}.`);
+      if (typeof it[f] === 'string') corr('item', f, label.charAt(0).toUpperCase() + label.slice(1), it[f], x, 'format', 'Removed £, commas or units', n.sku);
       return x;
     };
     n.qty = v('qty', 'quantity', true);
@@ -602,8 +635,12 @@ function normaliseBooking(raw) {
     n.upc = v('upc', 'units per carton', true);
     n.cartons = v('cartons', 'cartons', true);
     n.unitWeight = v('unitWeight', 'unit weight', false);
+    const dv = it.derived || {};
+    if (dv.cartons && isNum(n.cartons)) corr('item', 'cartons', 'Cartons', '', n.cartons, 'derived', `Worked out: ${fmtNum(n.qty)} ÷ ${fmtNum(n.upc)} per carton`, n.sku);
+    if (dv.qty && isNum(n.qty)) corr('item', 'qty', 'Quantity', '', n.qty, 'derived', `Worked out: ${fmtNum(n.cartons)} cartons × ${fmtNum(n.upc)}`, n.sku);
+    if (dv.upc && isNum(n.upc)) corr('item', 'upc', 'Units per carton', '', n.upc, 'derived', `Worked out: ${fmtNum(n.qty)} ÷ ${fmtNum(n.cartons)} cartons`, n.sku);
     if (isBlank(it.coo)) n.coo = null;
-    else { n.coo = normCountry(it.coo) || clean(it.coo); if (!COO_LIST.includes(n.coo)) amber(lab, `${lab}: country of origin “${clean(it.coo)}” isn't one of the expected values.`, `Use the full country name (e.g. ${COO_LIST.join(', ')}).`); }
+    else { n.coo = normCountry(it.coo) || clean(it.coo); if (normCountry(it.coo)) corr('item', 'coo', 'Country of origin', it.coo, n.coo, caseOrAlias(it.coo, n.coo), 'Recognised country name', n.sku); if (!COO_LIST.includes(n.coo)) amber(lab, `${lab}: country of origin “${clean(it.coo)}” isn't one of the expected values.`, `Use the full country name (e.g. ${COO_LIST.join(', ')}).`); }
     return n;
   });
   if (!b.items.length) red('Items', 'This booking has no item lines.', 'Add at least one item (SKU, description, HS code, quantity, unit price, packing and weight) — the commercial invoice is built from them.');
@@ -917,11 +954,11 @@ function evaluate(rawOrNorm, opts = {}) {
     const arrive = nextWorkingDay(arriveRaw);
     eta = { collect, arrive, movedCollect: collect !== start, movedArrive: arrive !== arriveRaw, fromToday: b.ready < today };
   }
-  return { b, checks, dataIssues: b.dataIssues, advisories, status, reds, ambers, rec, plan, eta, net, today };
+  return { b, checks, dataIssues: b.dataIssues, advisories, corrections: b.corrections || [], status, reds, ambers, rec, plan, eta, net, today };
 }
 
 // ---------- Plain-language confirmation ----------
-function confirmation(ev) {
+function confirmation(ev, reviewed = 0) {
   const { b, rec, eta, status } = ev;
   if (!rec) return null;
   const c = rec.chosen;
@@ -934,6 +971,8 @@ function confirmation(ev) {
       : `Carrier: ${label(c)} — ${gbp(c.cost)} (${gbp(c.price)} × ${c.pallets} pallet${c.pallets === 1 ? '' : 's'}), ${c.transit} days in transit, ${c.onTime}% on time.`,
   ];
   if (eta) lines.push(`Collection ${fmtDateLong(eta.collect)}; estimated delivery ${fmtDateLong(eta.arrive)}.`);
+  const unreviewed = Math.max(0, (ev.corrections || []).length - reviewed);
+  if (unreviewed) lines.push(`${unreviewed} automatic correction${unreviewed === 1 ? '' : 's'} not yet reviewed — check ${unreviewed === 1 ? 'it' : 'them'} before booking.`);
   const next = [];
   if (status === 'Red') next.push('Fix every red issue above — the shipment cannot be handed to the carrier until they are cleared.');
   if (status === 'Amber') next.push('Review the amber warnings — they will not stop collection but often cause delays at customs or the warehouse.');
