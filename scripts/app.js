@@ -183,7 +183,7 @@ function reportEl(ev, ctx) {
     h('h3', null, 'Booking summary'),
     h('p', { class: 'conf-head s-' + status }, conf.head),
     conf.lines.map(l => h('p', null, l)),
-    eta && (eta.movedCollect || eta.movedArrive || eta.fromToday) ? h('p', { class: 'note' }, [eta.fromToday ? 'Ready date is in the past, so timing is counted from today.' : null, eta.movedCollect ? 'Collection moved to the next working day.' : null, eta.movedArrive ? 'Arrival moved to the next working day (no weekend deliveries).' : null].filter(Boolean).join(' ')) : null,
+    eta && (eta.movedCollect || eta.movedArrive || eta.fromToday || eta.bufferDays) ? h('p', { class: 'note' }, [eta.bufferDays ? `No warehouse appointment yet, so ${eta.bufferDays} days are added to the delivery estimate to book a slot.` : null, eta.fromToday ? 'Ready date is in the past, so timing is counted from today.' : null, eta.movedCollect ? 'Collection moved to the next working day.' : null, eta.movedArrive ? 'Arrival moved to the next working day (no weekend deliveries).' : null].filter(Boolean).join(' ')) : null,
     h('p', { class: 'note' }, `Dates checked against today, ${PF.fmtDate(ev.today)} (this device’s date).`),
     h('h4', null, 'What happens next'),
     h('ol', { class: 'next' }, conf.next.map(n => h('li', null, n)))) : null;
@@ -498,7 +498,7 @@ function renderRules() {
     'R-05': 'Checked against the carrier picked for the seller’s priority (or the one they chose). When it fails, Preflight prices every way out — switch carrier as-is, or re-pack onto more pallets — and orders them by the seller’s priority. Exactly at the limit passes.',
     'R-06': 'Keyword scan of description and SKU in three groups. Clear matches (lithium, power bank, aerosol, perfume, nail polish…) are Red. Items that often contain them (Bluetooth speaker, “spray”, reed diffuser, spirits) are flagged Amber to confirm. Negations like “batteries not included”, “non-aerosol”, “alcohol-free” are respected.',
     'R-07': 'Gross must be at least net (unit weight × quantity). Equal passes, with a note that it looks like net weight.',
-    'R-08': 'Only for Warehouse destinations; business addresses show “not applicable”. A blank answer is treated as not booked.',
+    'R-08': 'Only for Warehouse destinations; business addresses show “not applicable”. A blank answer is treated as not booked. Still Amber when not booked, and the delivery estimate adds 2 days to the transit time so there is time to book the slot (e.g. 5 days on Carrier A + 2).',
     'R-09': 'Blank fails. “UK”, “GB”, “PRC”, “Türkiye” and similar are read as the full country name.',
     'R-10': 'Compared with today’s date in your browser. Today passes. Dates are read day-first (DD-MM-YYYY); real Excel dates and ISO dates also work; impossible dates (31-02) are rejected rather than guessed.',
   };

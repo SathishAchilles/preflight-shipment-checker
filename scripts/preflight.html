@@ -306,6 +306,8 @@ footer { max-width: 1320px; margin: 0 auto; padding: 0 24px 32px; color: var(--m
 'use strict';
 
 // ---------- Fixed reference data (Sheets 3 & 4 of the template) ----------
+// Days added to the delivery estimate for a warehouse delivery whose appointment is not booked yet (R-08).
+const APPT_BUFFER_DAYS = 2;
 const CARRIERS = [
   { carrier: 'Carrier A', service: 'Road economy',  dest: 'Germany',     price: 180, transit: 5, onTime: 92, maxW: 500 },
   { carrier: 'Carrier B', service: 'Road standard', dest: 'Germany',     price: 220, transit: 3, onTime: 95, maxW: 750 },
@@ -1248,14 +1250,16 @@ function evaluate(rawOrNorm, opts = {}) {
   const ambers = checks.filter(c => (c.status === 'fail' && c.sev === 'Amber') || c.status === 'check').length + b.dataIssues.filter(i => i.sev === 'Amber').length;
   const status = reds ? 'Red' : ambers ? 'Amber' : 'Green';
 
-  // Timeline
+  // Timeline. A warehouse delivery with no booked appointment (R-08) gets APPT_BUFFER_DAYS added to the
+  // transit time: the earliest realistic arrival once a slot has been booked. R-08 itself stays Amber.
   let eta = null;
   if (b.ready && rec) {
     const start = b.ready < today ? today : b.ready;
     const collect = nextWorkingDay(start);
-    const arriveRaw = addDays(collect, rec.chosen.transit);
+    const bufferDays = b.destType === 'Warehouse' && b.appointment !== 'Yes' ? APPT_BUFFER_DAYS : 0;
+    const arriveRaw = addDays(collect, rec.chosen.transit + bufferDays);
     const arrive = nextWorkingDay(arriveRaw);
-    eta = { collect, arrive, movedCollect: collect !== start, movedArrive: arrive !== arriveRaw, fromToday: b.ready < today };
+    eta = { collect, arrive, bufferDays, movedCollect: collect !== start, movedArrive: arrive !== arriveRaw, fromToday: b.ready < today };
   }
   return { b, checks, dataIssues: b.dataIssues, advisories, corrections: b.corrections || [], status, reds, ambers, rec, plan, eta, net, today };
 }
@@ -1273,7 +1277,7 @@ function confirmation(ev, reviewed = 0) {
       ? `Carrier: ${label(c)} can't take ${kg(rec.wpp)} pallets. Recommended fix: ${rec.fixes[0].text}`
       : `Carrier: ${label(c)} — ${gbp(c.cost)} (${gbp(c.price)} × ${c.pallets} pallet${c.pallets === 1 ? '' : 's'}), ${c.transit} days in transit, ${c.onTime}% on time.`,
   ];
-  if (eta) lines.push(`Collection ${fmtDateLong(eta.collect)}; estimated delivery ${fmtDateLong(eta.arrive)}.`);
+  if (eta) lines.push(`Collection ${fmtDateLong(eta.collect)}; estimated delivery ${fmtDateLong(eta.arrive)}${eta.bufferDays ? ` (${rec.chosen.transit} days in transit + ${eta.bufferDays} days to book the warehouse slot)` : ''}.`);
   const unreviewed = Math.max(0, (ev.corrections || []).length - reviewed);
   if (unreviewed) lines.push(`${unreviewed} automatic correction${unreviewed === 1 ? '' : 's'} not yet reviewed — check ${unreviewed === 1 ? 'it' : 'them'} before booking.`);
   const next = [];
@@ -1283,7 +1287,7 @@ function confirmation(ev, reviewed = 0) {
   next.push(`We generate the commercial invoice from your ${b.items.length} item line${b.items.length === 1 ? '' : 's'} (HS code, origin, quantity, value) and the UK export declaration.`);
   next.push(`Label all ${fmtNum(b.cartons)} cartons and ${fmtNum(b.pallets)} pallet${b.pallets === 1 ? '' : 's'} with the booking reference${b.destType === 'Warehouse' ? ' and SKU/quantity per carton — the warehouse checks counts against what you declared' : ''}.`);
   if (eta) next.push(`Have the goods packed and ready at ${b.originCity} on ${fmtDate(eta.collect)}.`);
-  if (b.destType === 'Warehouse') next.push(b.appointment === 'Yes' ? `Make sure your delivery appointment matches the estimated arrival (${eta ? fmtDate(eta.arrive) : 'see above'}).` : `Book a delivery appointment at the warehouse for ${eta ? fmtDate(eta.arrive) : 'the arrival date'}.`);
+  if (b.destType === 'Warehouse') next.push(b.appointment === 'Yes' ? `Make sure your delivery appointment matches the estimated arrival (${eta ? fmtDate(eta.arrive) : 'see above'}).` : `Book a delivery appointment at the warehouse for ${eta ? fmtDate(eta.arrive) : 'the arrival date'}${eta && eta.bufferDays ? ` — the estimate already allows ${eta.bufferDays} days to get the slot` : ''}.`);
   next.push(`EU import clearance in ${b.destCountry}, then delivery. You get tracking updates at collection, customs and delivery.`);
   return { head, lines, next };
 }
@@ -1903,6 +1907,10 @@ function runTests(PF, CHAT) {
   T('R-08 Appointment', 'Business address + No → not applicable', () => expect(st(ev(b => { b.destType = 'Business address'; b.appointment = 'No'; }), 'R-08') === 'na'));
   T('R-08 Appointment', 'Warehouse + blank → Amber (treated as not booked)', () => expect(st(ev(b => b.appointment = ''), 'R-08') === 'fail'));
   T('R-08 Appointment', '“yes ” lower-case with space → Yes', () => expect(st(ev(b => b.appointment = 'yes '), 'R-08') === 'pass'));
+  T('R-08 Appointment', 'Warehouse, not booked → still Amber; delivery = 5 days transit + 2 days buffer (Thu 05-11 → Thu 12-11)', () => { const e = ev(b => b.appointment = 'No'); return expect(st(e, 'R-08') === 'fail' && chk(e, 'R-08').sev === 'Amber' && e.status === 'Amber' && e.eta.bufferDays === 2 && e.eta.arrive === '2026-11-12', JSON.stringify(e.eta)); });
+  T('R-08 Appointment', 'Blank appointment → same 2-day buffer; booked → no buffer (Tue 10-11)', () => { const n = ev(b => b.appointment = ''), y = ev(); return expect(n.eta.arrive === '2026-11-12' && y.eta.bufferDays === 0 && y.eta.arrive === '2026-11-10', JSON.stringify([n.eta, y.eta])); });
+  T('R-08 Appointment', 'Business address → no buffer', () => { const e = ev(b => { b.destType = 'Business address'; b.appointment = 'No'; }); return expect(e.eta.bufferDays === 0, JSON.stringify(e.eta)); });
+  T('R-08 Appointment', 'Ready Wed 04-11, not booked → delivery Wed 11-11; summary explains 5 days transit + 2 days for the slot', () => { const e = ev(b => { b.appointment = 'No'; b.ready = '04-11-2026'; }), c = PF.confirmation(e); return expect(e.eta.arrive === '2026-11-11' && c.lines.some(l => /5 days in transit \+ 2 days to book the warehouse slot/.test(l)), JSON.stringify(e.eta) + ' ' + c.lines.join(' | ')); });
 
   // ---------- R-09 ----------
   T('R-09 Origin', 'Blank country of origin → Amber', () => { const e = ev(b => b.items[0].coo = ''); return expect(st(e, 'R-09') === 'fail' && e.status === 'Amber'); });
@@ -2224,7 +2232,7 @@ function reportEl(ev, ctx) {
     h('h3', null, 'Booking summary'),
     h('p', { class: 'conf-head s-' + status }, conf.head),
     conf.lines.map(l => h('p', null, l)),
-    eta && (eta.movedCollect || eta.movedArrive || eta.fromToday) ? h('p', { class: 'note' }, [eta.fromToday ? 'Ready date is in the past, so timing is counted from today.' : null, eta.movedCollect ? 'Collection moved to the next working day.' : null, eta.movedArrive ? 'Arrival moved to the next working day (no weekend deliveries).' : null].filter(Boolean).join(' ')) : null,
+    eta && (eta.movedCollect || eta.movedArrive || eta.fromToday || eta.bufferDays) ? h('p', { class: 'note' }, [eta.bufferDays ? `No warehouse appointment yet, so ${eta.bufferDays} days are added to the delivery estimate to book a slot.` : null, eta.fromToday ? 'Ready date is in the past, so timing is counted from today.' : null, eta.movedCollect ? 'Collection moved to the next working day.' : null, eta.movedArrive ? 'Arrival moved to the next working day (no weekend deliveries).' : null].filter(Boolean).join(' ')) : null,
     h('p', { class: 'note' }, `Dates checked against today, ${PF.fmtDate(ev.today)} (this device’s date).`),
     h('h4', null, 'What happens next'),
     h('ol', { class: 'next' }, conf.next.map(n => h('li', null, n)))) : null;
@@ -2539,7 +2547,7 @@ function renderRules() {
     'R-05': 'Checked against the carrier picked for the seller’s priority (or the one they chose). When it fails, Preflight prices every way out — switch carrier as-is, or re-pack onto more pallets — and orders them by the seller’s priority. Exactly at the limit passes.',
     'R-06': 'Keyword scan of description and SKU in three groups. Clear matches (lithium, power bank, aerosol, perfume, nail polish…) are Red. Items that often contain them (Bluetooth speaker, “spray”, reed diffuser, spirits) are flagged Amber to confirm. Negations like “batteries not included”, “non-aerosol”, “alcohol-free” are respected.',
     'R-07': 'Gross must be at least net (unit weight × quantity). Equal passes, with a note that it looks like net weight.',
-    'R-08': 'Only for Warehouse destinations; business addresses show “not applicable”. A blank answer is treated as not booked.',
+    'R-08': 'Only for Warehouse destinations; business addresses show “not applicable”. A blank answer is treated as not booked. Still Amber when not booked, and the delivery estimate adds 2 days to the transit time so there is time to book the slot (e.g. 5 days on Carrier A + 2).',
     'R-09': 'Blank fails. “UK”, “GB”, “PRC”, “Türkiye” and similar are read as the full country name.',
     'R-10': 'Compared with today’s date in your browser. Today passes. Dates are read day-first (DD-MM-YYYY); real Excel dates and ISO dates also work; impossible dates (31-02) are rejected rather than guessed.',
   };

@@ -3,6 +3,8 @@
 'use strict';
 
 // ---------- Fixed reference data (Sheets 3 & 4 of the template) ----------
+// Days added to the delivery estimate for a warehouse delivery whose appointment is not booked yet (R-08).
+const APPT_BUFFER_DAYS = 2;
 const CARRIERS = [
   { carrier: 'Carrier A', service: 'Road economy',  dest: 'Germany',     price: 180, transit: 5, onTime: 92, maxW: 500 },
   { carrier: 'Carrier B', service: 'Road standard', dest: 'Germany',     price: 220, transit: 3, onTime: 95, maxW: 750 },
@@ -945,14 +947,16 @@ function evaluate(rawOrNorm, opts = {}) {
   const ambers = checks.filter(c => (c.status === 'fail' && c.sev === 'Amber') || c.status === 'check').length + b.dataIssues.filter(i => i.sev === 'Amber').length;
   const status = reds ? 'Red' : ambers ? 'Amber' : 'Green';
 
-  // Timeline
+  // Timeline. A warehouse delivery with no booked appointment (R-08) gets APPT_BUFFER_DAYS added to the
+  // transit time: the earliest realistic arrival once a slot has been booked. R-08 itself stays Amber.
   let eta = null;
   if (b.ready && rec) {
     const start = b.ready < today ? today : b.ready;
     const collect = nextWorkingDay(start);
-    const arriveRaw = addDays(collect, rec.chosen.transit);
+    const bufferDays = b.destType === 'Warehouse' && b.appointment !== 'Yes' ? APPT_BUFFER_DAYS : 0;
+    const arriveRaw = addDays(collect, rec.chosen.transit + bufferDays);
     const arrive = nextWorkingDay(arriveRaw);
-    eta = { collect, arrive, movedCollect: collect !== start, movedArrive: arrive !== arriveRaw, fromToday: b.ready < today };
+    eta = { collect, arrive, bufferDays, movedCollect: collect !== start, movedArrive: arrive !== arriveRaw, fromToday: b.ready < today };
   }
   return { b, checks, dataIssues: b.dataIssues, advisories, corrections: b.corrections || [], status, reds, ambers, rec, plan, eta, net, today };
 }
@@ -970,7 +974,7 @@ function confirmation(ev, reviewed = 0) {
       ? `Carrier: ${label(c)} can't take ${kg(rec.wpp)} pallets. Recommended fix: ${rec.fixes[0].text}`
       : `Carrier: ${label(c)} — ${gbp(c.cost)} (${gbp(c.price)} × ${c.pallets} pallet${c.pallets === 1 ? '' : 's'}), ${c.transit} days in transit, ${c.onTime}% on time.`,
   ];
-  if (eta) lines.push(`Collection ${fmtDateLong(eta.collect)}; estimated delivery ${fmtDateLong(eta.arrive)}.`);
+  if (eta) lines.push(`Collection ${fmtDateLong(eta.collect)}; estimated delivery ${fmtDateLong(eta.arrive)}${eta.bufferDays ? ` (${rec.chosen.transit} days in transit + ${eta.bufferDays} days to book the warehouse slot)` : ''}.`);
   const unreviewed = Math.max(0, (ev.corrections || []).length - reviewed);
   if (unreviewed) lines.push(`${unreviewed} automatic correction${unreviewed === 1 ? '' : 's'} not yet reviewed — check ${unreviewed === 1 ? 'it' : 'them'} before booking.`);
   const next = [];
@@ -980,7 +984,7 @@ function confirmation(ev, reviewed = 0) {
   next.push(`We generate the commercial invoice from your ${b.items.length} item line${b.items.length === 1 ? '' : 's'} (HS code, origin, quantity, value) and the UK export declaration.`);
   next.push(`Label all ${fmtNum(b.cartons)} cartons and ${fmtNum(b.pallets)} pallet${b.pallets === 1 ? '' : 's'} with the booking reference${b.destType === 'Warehouse' ? ' and SKU/quantity per carton — the warehouse checks counts against what you declared' : ''}.`);
   if (eta) next.push(`Have the goods packed and ready at ${b.originCity} on ${fmtDate(eta.collect)}.`);
-  if (b.destType === 'Warehouse') next.push(b.appointment === 'Yes' ? `Make sure your delivery appointment matches the estimated arrival (${eta ? fmtDate(eta.arrive) : 'see above'}).` : `Book a delivery appointment at the warehouse for ${eta ? fmtDate(eta.arrive) : 'the arrival date'}.`);
+  if (b.destType === 'Warehouse') next.push(b.appointment === 'Yes' ? `Make sure your delivery appointment matches the estimated arrival (${eta ? fmtDate(eta.arrive) : 'see above'}).` : `Book a delivery appointment at the warehouse for ${eta ? fmtDate(eta.arrive) : 'the arrival date'}${eta && eta.bufferDays ? ` — the estimate already allows ${eta.bufferDays} days to get the slot` : ''}.`);
   next.push(`EU import clearance in ${b.destCountry}, then delivery. You get tracking updates at collection, customs and delivery.`);
   return { head, lines, next };
 }

@@ -58,6 +58,7 @@ Base booking: Manchester → Frankfurt warehouse, 3 pallets, 90 cartons, £5,400
 | C21 | Gross = net 540 | Pass + "looks like net weight" |
 | C22 | Warehouse + No / blank | R-08 Amber |
 | C23 | Business address + No | R-08 N/A |
+| C23a | Warehouse + No, ready Thu 05-11, Carrier A | R-08 Amber; delivery Thu 12-11 (5 days + 2 buffer); booked → Tue 10-11 |
 | C24 | Blank origin | R-09 Amber |
 | C25 | Ready yesterday | R-10 Amber; ETA from today |
 | C26 | Ready today | Pass |

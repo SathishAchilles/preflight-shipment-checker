@@ -127,6 +127,10 @@ function runTests(PF, CHAT) {
   T('R-08 Appointment', 'Business address + No → not applicable', () => expect(st(ev(b => { b.destType = 'Business address'; b.appointment = 'No'; }), 'R-08') === 'na'));
   T('R-08 Appointment', 'Warehouse + blank → Amber (treated as not booked)', () => expect(st(ev(b => b.appointment = ''), 'R-08') === 'fail'));
   T('R-08 Appointment', '“yes ” lower-case with space → Yes', () => expect(st(ev(b => b.appointment = 'yes '), 'R-08') === 'pass'));
+  T('R-08 Appointment', 'Warehouse, not booked → still Amber; delivery = 5 days transit + 2 days buffer (Thu 05-11 → Thu 12-11)', () => { const e = ev(b => b.appointment = 'No'); return expect(st(e, 'R-08') === 'fail' && chk(e, 'R-08').sev === 'Amber' && e.status === 'Amber' && e.eta.bufferDays === 2 && e.eta.arrive === '2026-11-12', JSON.stringify(e.eta)); });
+  T('R-08 Appointment', 'Blank appointment → same 2-day buffer; booked → no buffer (Tue 10-11)', () => { const n = ev(b => b.appointment = ''), y = ev(); return expect(n.eta.arrive === '2026-11-12' && y.eta.bufferDays === 0 && y.eta.arrive === '2026-11-10', JSON.stringify([n.eta, y.eta])); });
+  T('R-08 Appointment', 'Business address → no buffer', () => { const e = ev(b => { b.destType = 'Business address'; b.appointment = 'No'; }); return expect(e.eta.bufferDays === 0, JSON.stringify(e.eta)); });
+  T('R-08 Appointment', 'Ready Wed 04-11, not booked → delivery Wed 11-11; summary explains 5 days transit + 2 days for the slot', () => { const e = ev(b => { b.appointment = 'No'; b.ready = '04-11-2026'; }), c = PF.confirmation(e); return expect(e.eta.arrive === '2026-11-11' && c.lines.some(l => /5 days in transit \+ 2 days to book the warehouse slot/.test(l)), JSON.stringify(e.eta) + ' ' + c.lines.join(' | ')); });
 
   // ---------- R-09 ----------
   T('R-09 Origin', 'Blank country of origin → Amber', () => { const e = ev(b => b.items[0].coo = ''); return expect(st(e, 'R-09') === 'fail' && e.status === 'Amber'); });
