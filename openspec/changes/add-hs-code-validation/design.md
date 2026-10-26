@@ -87,7 +87,7 @@ The rule handles every shape seen:
             "snapshotDate": "2026-10-26", "licence": "OGL v3.0", "store": "supabase preflight schema",
             "counts": {…} },
   "h4":  { "6912": "Ceramic tableware, …" },            // 1,234 headings
-  "h6":  { "691200": "<path description>" },             // 5,717
+  "h6":  { "691200": "", "610910": "> Of cotton" },      // 5,717; path relative to its h4 heading
   "cn8": ["69120023", …],                                // sorted
   "l10": ["6912002310", …],                              // sorted
   "refs": [["mugs, of ceramic other than porcelain or china", "6912", "H"], …] }
@@ -98,7 +98,8 @@ Without `refs` the prototype is about 1.41 MB minified; `refs` stored as `[title
 - **`refs` prefix:** a Heading row keeps 4 digits; a Subheading or Commodity row keeps its code with trailing `0`s removed, cut to at most 6 digits (so `6115940000-10` "socks" becomes `611594`, and `6109100010` becomes `610910`). Rows whose prefix matches no `h6` entry are dropped at snapshot time.
 
 - **Heading rows are pinned to suffix 80.** 34 heading-level codes have two current rows. For example, `6904000000` has suffix `10` "II. OTHER CERAMIC PRODUCTS" (a sub-chapter title) and suffix `80` "Ceramic building bricks…". `h4` takes the suffix-80 row only, and the path walk stops at `hs4 + "000000"` suffix 80.
-- **Path description for `h6`:** start at the shallowest current row whose code is `hs6 + "0000"` (lowest suffix first). Walk its parents up to the heading, joining with ` > `. Strip HTML tags, turn `|` into spaces and collapse whitespace.
+- **`h6` is stored relative to its heading** (found 26 Oct 2026, when the corrected paths pushed the export to 2,015,261 bytes, over budget): `""` means the code is the heading itself, `"> …"` is the rest of the path below the heading. `setHsIndex` joins it back onto `h4`, so every lookup and the item table still show the full description, and `v_h6` in the database keeps the full text.
+- **Path description for `h6`:** start at the current suffix-80 row whose code is `hs6 + "0000"` (the subheading itself), or the lowest suffix when there is none. Starting at a lower suffix would end the path at a grouping row such as "Other" (found on 611594: "… > Other" instead of "… > Other > Of wool or fine animal hair"). Walk its parents up to the heading, joining with ` > `. Strip HTML tags, turn `|` into spaces and collapse whitespace.
   - Example: `610910` gives "T-shirts, singlets and other vests, knitted or crocheted > Of cotton".
   - When the hs6 row is the heading itself (`691200`), use only the heading description.
 - *Rejected:* storing all 25k rows with parent links, which is about 3× larger and not needed for validation.
@@ -150,6 +151,13 @@ Runs only for items whose code fails R-01 (blank, letters, or fewer than 6 digit
    - otherwise, when the top candidates share a 4-digit heading → "Heading 0902 Tea — choose one of 090210, 090220, 090230, 090240";
    - otherwise up to 3 candidates; nothing when no source matched.
    - Ties break by code ascending, so output is stable.
+4b. **Refinements found on the live data during implementation (26 Oct 2026):**
+   - `stock`, `misc`, `goods` and `products` are stop words: "Misc stock" otherwise matched the reference "stocks, fruit" (heading 0602).
+   - Each unmatched qualifier word costs 0.1, so a bare reference ("tea" → 0902) beats a more specific one that does not fit ("tea, extracts, essences and concentrates" → 210120).
+   - A bare material word as a reference head ("wool, mineral") scores 1 instead of 3, so "Wool socks" follows the "socks" reference, not slag wool (6806).
+   - S1 skips a curated code whose wording names only a different material than the item ("Wool socks" does not get the cotton-socks hint 611595).
+   - S3 needs at least half of the description's words to match ("Widget assembly kit" no longer matches chemical kits on "kit" alone).
+   - The heading-level answer uses the candidates tied at the top score; the list answer uses those within 1.5× of it.
 5. **Where it shows** (as a recommendation with one "Use <code>" action per candidate, never applied without a click or a chat "yes"): R-01 fix text (replacing the plain `hsHint` text when an index is loaded; `hsHint` stays the fallback with no index), the chat reply when the seller gives a product without a code, and the item table as a "suggested" line. A suggestion is never written into the booking, never changes any status and always says "verify on trade-tariff.service.gov.uk".
 6. **Chat follow-up:** when the choice is between subheadings that differ only by material, the chat asks one question, "What is it mainly made of?", and re-runs step 3 with the answer.
 

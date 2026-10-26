@@ -67,7 +67,7 @@ function chatDate(text, today) {
 function parseMessage(text, st, today) {
   const raw = String(text || '');
   const low = raw.toLowerCase();
-  const P = { booking: {}, items: [], removeItems: [], palletsDelta: 0, notes: [], intents: [], hsUnknown: [], cooUnknown: [], understood: false };
+  const P = { booking: {}, items: [], removeItems: [], palletsDelta: 0, notes: [], intents: [], hsUnknown: [], cooUnknown: [], material: null, understood: false };
   const S = { w: ' ' + raw.replace(/[’]/g, "'") + ' ' }; // working copy; matched spans are masked with spaces
   const items = st.booking.items;
 
@@ -256,7 +256,7 @@ function parseMessage(text, st, today) {
   // "don't know" answers to the pending question
   const pend = st.pending;
   const dunno = /\b(don'?t know|do not know|not sure|no idea|unknown|skip|n\/a|none|haven'?t got (?:one|it)|can'?t find|leave (?:it )?blank)\b/i.test(raw);
-  if (pend && pend.item != null && dunno) { if (pend.field === 'hs') P.hsUnknown.push(pend.item); if (pend.field === 'coo') P.cooUnknown.push(pend.item); }
+  if (pend && pend.item != null && dunno) { if (pend.field === 'hs') P.hsUnknown.push(pend.item); if (pend.field === 'coo') P.cooUnknown.push(pend.item); if (pend.field === 'hsMaterial') P.material = { item: pend.item, value: null }; }
 
   // Bare answer to the pending question (only fills the asked field if nothing else did)
   if (pend && !dunno) {
@@ -265,6 +265,7 @@ function parseMessage(text, st, today) {
     if (pItem && ['qty', 'price', 'upc', 'cartons', 'unitWeight'].includes(f) && pItem.fields[f] == null && bareNum) pItem.fields[f] = f === 'unitWeight' && /^g/.test(bareNum.u) ? bareNum.v / 1000 : bareNum.v;
     if (pItem && f === 'hs' && pItem.fields.hs == null) { const m = /\b(\d[\d .]{2,14}\d|\d{3,})\b/.exec(S.w); if (m) pItem.fields.hs = m[1].replace(/[ .]/g, ''); }
     if (pItem && f === 'coo' && pItem.fields.coo == null) { const c = countryIn(raw); if (c) pItem.fields.coo = c; }
+    if (f === 'hsMaterial' && pend.item != null) { const m = new RegExp(`\\b(${PF.HS_MATERIALS.join('|')}|other)\\b`, 'i').exec(raw); P.material = { item: pend.item, value: m ? m[1].toLowerCase() : null }; }
     if (f === 'pallets' && P.booking.pallets == null && !P.palletsDelta && bareNum) P.booking.pallets = bareNum.v;
     if (f === 'gross' && P.booking.gross == null && bareNum) P.booking.gross = /^t/.test(bareNum.u) ? bareNum.v * 1000 : bareNum.v;
     if (f === 'declared' && P.booking.declared == null && bareNum) P.booking.declared = bareNum.u === 'k' ? bareNum.v * 1000 : bareNum.v;
@@ -275,7 +276,7 @@ function parseMessage(text, st, today) {
     if (f === 'items' && !segs.length && !items.length && !pending.length && !Object.keys(P.booking).length && !P.palletsDelta) { const v = raw.trim().replace(/^(?:we(?:'re| are)? (?:sending|shipping)|sending|shipping|it'?s|they'?re)\s+/i, '').replace(/[.!]+$/, ''); if (v && !/^\d+$/.test(v) && v.length <= 80 && !dunno) pending.push({ ref: 'new', fields: { description: titleCase(v.charAt(0)) + v.slice(1) } }); }
   }
   P.items = pending.filter(p => Object.keys(p.fields).length);
-  P.understood = !!(Object.keys(P.booking).length || P.items.length || P.removeItems.length || P.palletsDelta || P.hsUnknown.length || P.cooUnknown.length || P.intents.length);
+  P.understood = !!(Object.keys(P.booking).length || P.items.length || P.removeItems.length || P.palletsDelta || P.hsUnknown.length || P.cooUnknown.length || (P.material && P.material.value) || P.intents.length);
   return P;
 }
 function countryIn(s) {
@@ -319,6 +320,25 @@ function toRaw(st, id) {
 }
 
 // What's still missing, in asking order
+// HS suggestion for a chat item (design D6): the tariff index when loaded, else the curated hint. Recommendation only.
+function hsSuggestFor(it) {
+  if (!PF.hsMeta()) { const h = PF.hsHint(it.description); return h ? { level: 'hs6', codes: [h.code], label: h.label } : null; }
+  const r = PF.hsSuggest(`${it.description || ''}${it.material && it.material !== 'other' ? ' ' + it.material : ''}`);
+  if (r.level === 'none') return null;
+  if (it.material === 'other' && r.level === 'hs6' && PF.hsMaterialsOf(r.codes[0]).length) {   // "other material": drop subheadings named for a material
+    const rest = PF.hsHeading(r.heading).subs.filter(c => !PF.hsMaterialsOf(c).length);
+    if (rest.length) return { ...r, level: rest.length === 1 ? 'hs6' : 'heading', codes: rest };
+  }
+  return r;
+}
+// Materials worth asking about: the item names none, and the candidate subheadings are told apart by material.
+function hsMaterialChoices(it, sug) {
+  if (!PF.hsMeta() || !sug || it.material || it.materialAsked) return null;
+  if (PF.hsTokens(it.description).some(t => PF.HS_MATERIALS.includes(t))) return null;
+  const cands = sug.level === 'hs6' ? (PF.hsHeading(sug.codes[0].slice(0, 4)).subs || []) : sug.codes;
+  const mats = [...new Set(cands.flatMap(c => PF.hsMaterialsOf(c)))];
+  return cands.length > 1 && mats.length ? mats : null;
+}
 function missing(st) {
   const b = st.booking; const out = [];
   const destChips = b.destCountry ? Object.keys(CITY_COUNTRY).filter(c => CITY_COUNTRY[c] === b.destCountry) : Object.keys(CITY_COUNTRY);
@@ -335,13 +355,16 @@ function missing(st) {
       else need.push(['cartons', `number of cartons (${fmtNum(it.qty)} ÷ ${fmtNum(it.upc)} isn't a whole number)`]);
     }
     if (!isNum(it.unitWeight)) need.push(['unitWeight', 'weight of one unit (kg)']);
-    const hint = PF.hsHint(it.description);
-    if (!it.hs && !it.hsUnknown) need.push(['hs', hint ? `HS code (usually ${hint.code} for ${hint.label} — tap to use it, or say “don’t know”)` : 'HS code (or say “don’t know”)']);
+    const sug = !it.hs && !it.hsUnknown ? hsSuggestFor(it) : null, mats = !it.hs && !it.hsUnknown ? hsMaterialChoices(it, sug) : null;
+    const sugCodes = sug ? sug.codes.slice(0, 4) : [];
+    if (mats) need.push(['hsMaterial', 'what it is mainly made of (it decides the HS code)']);
+    else if (!it.hs && !it.hsUnknown) need.push(['hs', !sug ? 'HS code (or say “don’t know”)' : sug.level === 'hs6' ? `HS code (suggested ${sug.codes[0]} ${sug.label ? `for ${sug.label}` : `(${PF.hsShort(PF.hsLookup(sug.codes[0]).desc)})`} — tap to use it after checking, or say “don’t know”)` : `HS code (one of ${sugCodes.join(', ')} — tap the one that fits, or say “don’t know”)`]);
     if (!it.coo && !it.cooUnknown) need.push(['coo', 'country where it was made']);
     if (need.length) {
       const lst = need.map(n => n[1]);
       const q = `For the ${it.description.toLowerCase()} I still need: ${lst.length > 1 ? lst.slice(0, -1).join(', ') + ' and ' + lst[lst.length - 1] : lst[0]}.`;
-      out.push({ field: need[0][0], item: i, q, chips: need[0][0] === 'coo' ? [...COO_LIST, 'Don’t know'] : need[0][0] === 'hs' ? (hint ? [`Use ${hint.code}`, 'Don’t know'] : ['Don’t know']) : null });
+      const chips = need[0][0] === 'coo' ? [...COO_LIST, 'Don’t know'] : need[0][0] === 'hs' ? [...sugCodes.map(c => `Use ${c}`), 'Don’t know'] : need[0][0] === 'hsMaterial' ? [...mats.map(m => m[0].toUpperCase() + m.slice(1)), 'Other'] : null;
+      out.push({ field: need[0][0], item: i, q: need[0][0] === 'hsMaterial' && need.length === 1 ? `What are the ${it.description.toLowerCase()} mainly made of? It decides the HS code.` : q, chips });
     }
   });
   if (!isNum(b.pallets)) out.push({ field: 'pallets', q: 'How many pallets?' });
@@ -417,7 +440,8 @@ function turn(stIn, text, today) {
   if (P.intents.includes('reset')) { st = newState(); const m = missing(st)[0]; st.pending = m; reply.intent = 'reset'; reply.ask = 'Starting a fresh booking. Describe the shipment — what, where to, and how many pallets — and I’ll ask for anything missing.'; return { st, reply }; }
   if (P.intents.includes('help')) { reply.intent = 'help'; }
   reply.changes = applyPatch(st, P);
-  P.hsUnknown.forEach(i => { const it = st.booking.items[i]; if (!it || it.hs) return; const h = PF.hsHint(it.description); reply.notes.push(h ? `No problem. For “${it.description}” the usual HS code is ${h.code} (${h.label}). Say “use ${h.code}” to accept it — worth a quick check on the UK Trade Tariff. Until then R-01 stays red.` : `No problem — I couldn’t suggest a code for “${it.description}”. Look it up on the UK Trade Tariff (trade-tariff.service.gov.uk); until then R-01 stays red.`); });
+  if (P.material && st.booking.items[P.material.item]) { const it = st.booking.items[P.material.item]; it.materialAsked = true; if (P.material.value) { it.material = P.material.value; reply.notes.push(`Noted: ${it.description} — ${P.material.value}.`); } }
+  P.hsUnknown.forEach(i => { const it = st.booking.items[i]; if (!it || it.hs) return; const h = hsSuggestFor(it), what = h && (h.label || PF.hsShort((PF.hsLookup(h.codes[0]) || {}).desc)); reply.notes.push(h && h.level === 'hs6' ? `No problem. For “${it.description}” the suggested HS code is ${h.codes[0]} (${what}). Say “use ${h.codes[0]}” to accept it — worth a quick check on the UK Trade Tariff. Until then R-01 stays red.` : h ? `No problem. For “${it.description}” the code is probably one of ${h.codes.slice(0, 4).join(', ')}. Say “use” and the one that fits — check it on the UK Trade Tariff. Until then R-01 stays red.` : `No problem — I couldn’t suggest a code for “${it.description}”. Look it up on the UK Trade Tariff (trade-tariff.service.gov.uk); until then R-01 stays red.`); });
   reply.derived = deriveItems(st.booking);
   const miss = missing(st);
   if (miss.length) {
@@ -441,6 +465,6 @@ function turn(stIn, text, today) {
   return { st, reply };
 }
 
-const CHAT = { newState, parseMessage, applyPatch, deriveItems, missing, toRaw, turn, chatDate, totals, countryIn };
+const CHAT = { newState, parseMessage, applyPatch, deriveItems, missing, toRaw, turn, chatDate, totals, countryIn, hsSuggestFor };
 if (typeof module !== 'undefined' && module.exports) module.exports = CHAT; else root.PFChat = CHAT;
 })(typeof window !== 'undefined' ? window : globalThis);

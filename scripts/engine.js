@@ -293,7 +293,8 @@ const HS_HINTS = [
   [/\bsunglasses\b/i, '900410', 'sunglasses'],
   [/\bumbrellas?\b/i, '660191', 'telescopic umbrellas'],
   [/\bgreen tea\b/i, '090210', 'green tea'],
-  [/\btea\b/i, '090240', 'black tea'],
+  [/\btea\b/i, '090240', 'black tea', 'generic'],   // generic: hsSuggest skips it (0902 has four subheadings)
+  [/\bpower ?banks?\b/i, '850760', 'lithium-ion power banks'],
   [/\bcoffee\b/i, '090121', 'roasted coffee'],
   [/\bchocolate\b/i, '180632', 'chocolate bars'],
   [/\bhoney\b/i, '040900', 'natural honey'],
@@ -308,7 +309,18 @@ function hsHint(desc) { const d = clean(desc); for (const [re, code, label] of H
 let HSX = null;
 function setHsIndex(idx) {
   if (!idx || !idx.h6) { HSX = null; return; }
-  HSX = { raw: idx, meta: idx.meta || {}, h4: new Map(Object.entries(idx.h4 || {})), h6: new Map(Object.entries(idx.h6)), cn8: idx.cn8 || [], l10: idx.l10 || [] };
+  const h4 = new Map(Object.entries(idx.h4 || {}));
+  // h6 paths are exported relative to the heading: '' = the heading itself, '> …' = below it.
+  const full = (c, v) => v === '' ? h4.get(c.slice(0, 4)) || '' : v.startsWith('> ') && h4.has(c.slice(0, 4)) ? `${h4.get(c.slice(0, 4))} ${v}` : v;
+  HSX = { raw: idx, meta: idx.meta || {}, h4, h6: new Map(Object.entries(idx.h6).map(([c, v]) => [c, full(c, v)])), cn8: idx.cn8 || [], l10: idx.l10 || [] };
+  // Suggestion data (design D6), built once: reference heads/qualifiers as tokens, candidates per prefix, IDF over HS-6 wording.
+  const codes = [...HSX.h6.keys()].sort(), under = new Map();
+  const subsOf = p => { if (!under.has(p)) { let lo = 0, hi = codes.length; while (lo < hi) { const m = (lo + hi) >> 1; if (codes[m] < p) lo = m + 1; else hi = m; } const out = []; while (lo < codes.length && codes[lo].startsWith(p)) out.push(codes[lo++]); under.set(p, out); } return under.get(p); };
+  HSX.refs = (idx.refs || []).map(([title, prefix]) => { const cut = title.search(/,| - /), head = cut < 0 ? title : title.slice(0, cut), qual = cut < 0 ? '' : title.slice(cut + 1);
+    return { title, head: hsTokens(head), qual: hsTokens(qual), cands: subsOf(prefix) }; }).filter(r => r.head.length && r.cands.length);
+  HSX.h6tok = new Map(codes.map(c => [c, hsWording(HSX.h6.get(c))]));
+  const df = new Map(); HSX.h6tok.forEach(w => new Set(w.tokens).forEach(t => df.set(t, (df.get(t) || 0) + 1)));
+  HSX.idf = new Map([...df].map(([t, n]) => [t, Math.log(codes.length / n)]));
 }
 function getHsIndex() { return HSX ? HSX.raw : null; }
 function hsMeta() { return HSX ? HSX.meta : null; }
@@ -326,12 +338,66 @@ function hsHeading(h4) {
   const k = String(h4 == null ? '' : h4).replace(/\D/g, '').slice(0, 4), desc = k.length === 4 ? HSX.h4.get(k) || null : null;
   return { known: !!desc, desc, subs: desc ? [...HSX.h6.keys()].filter(c => c.startsWith(k)).sort() : [] };
 }
-// Short label for fix text: the heading's first clause plus the last level ("Coffee > Coffee, not roasted").
+// ---------- HS suggestion from the product description (design D6; recommendation only) ----------
+const HS_STOP = new Set('a an the of and or for with without in on to by from per each set sets pack packs organic new other others assorted various item items piece pieces pcs pc pair pairs size small medium large mini made style kind type misc miscellaneous stock goods product products etc'.split(' '));
+const HS_MATERIALS = ['cotton', 'wool', 'synthetic', 'polyester', 'nylon', 'silk', 'leather', 'porcelain', 'china', 'ceramic', 'stoneware', 'glass', 'plastic', 'steel', 'iron', 'aluminium', 'wood', 'paper'];
+const HS_MATERIAL_RE = new RegExp(`\\b(${HS_MATERIALS.join('|')})\\b`, 'g');
+function hsStem(w) { if (w.length > 4 && w.endsWith('ies')) return w.slice(0, -3) + 'y'; if (w.length > 3 && /(s|x|z)es$/.test(w)) return w.slice(0, -2); if (w.length > 3 && w.endsWith('s') && !w.endsWith('ss')) return w.slice(0, -1); return w; }
+function hsTokens(text) {
+  const t = clean(text).toLowerCase().replace(/\bt[\s-]?shirts?\b|\btees?\b/g, ' t-shirt ')
+    .replace(/\d+(?:[.,]\d+)?\s*(?:-\s*)?(?:ml|cl|l|ltr|litres?|g|kg|mg|mm|cm|m|mah|wh|v|w|pack|packs|pcs?|pieces?|x)?\b/g, ' ');
+  const out = [];
+  for (const raw of t.match(/[a-z]+(?:-[a-z]+)*/g) || []) for (const w of raw === 't-shirt' ? [raw] : raw.split('-')) { const s = hsStem(w); if (s.length > 1 && !HS_STOP.has(w) && !HS_STOP.has(s) && !out.includes(s)) out.push(s); }
+  return out;
+}
+// Tokens of a tariff description, and the materials it names (words after "other than" are excluded materials).
+function hsWording(desc) {
+  const named = new Set(), d = String(desc || '').toLowerCase();
+  d.split(/[>;,(]/).forEach(part => { for (const m of part.split(/\bother than\b/)[0].match(HS_MATERIAL_RE) || []) named.add(m); });
+  return { tokens: hsTokens(desc), materials: named };
+}
+function hsSuggest(description) {
+  const none = { level: 'none', codes: [], heading: null, matched: [], source: null };
+  if (!HSX || !HSX.refs) return none;
+  const d = clean(description), tok = hsTokens(d);
+  if (!tok.length) return none;
+  // S1 curated hints (generic entries skipped; code must exist in the snapshot)
+  const mats = HS_MATERIALS.filter(m => tok.includes(m)), otherMaterial = c => { const n = HSX.h6tok.get(c).materials; return mats.length > 0 && n.size > 0 && !mats.some(m => n.has(m)); };
+  for (const [re, code, , flag] of HS_HINTS) { const m = flag === 'generic' ? null : re.exec(d); if (m && HSX.h6.has(code) && !otherMaterial(code)) return { level: 'hs6', codes: [code], heading: code.slice(0, 4), matched: hsTokens(m[0]), source: 'curated' }; }
+  const score = new Map(), why = new Map();
+  const bump = (c, v, words) => { if (v > (score.get(c) || 0)) { score.set(c, v); why.set(c, words); } };
+  // S2 search references: every head token present; 3 per head token (1 for a bare material word) + 1 per matched qualifier − 0.1 per unmatched qualifier
+  let source = 'reference';
+  for (const r of HSX.refs) {
+    if (!r.head.every(t => tok.includes(t))) continue;
+    const q = r.qual.filter(t => tok.includes(t)), v = r.head.reduce((a, t) => a + (HS_MATERIALS.includes(t) ? 1 : 3), 0) + q.length - 0.1 * (r.qual.length - q.length);
+    r.cands.forEach(c => bump(c, v, [...r.head, ...q]));
+  }
+  // S3 tariff wording, only when nothing else matched: IDF-weighted overlap with each HS-6 description
+  if (!score.size) {
+    source = 'tariff';
+    const need = Math.ceil(tok.length / 2);   // a single shared word ("kit") is not enough
+    HSX.h6tok.forEach((w, c) => { const hit = tok.filter(t => w.tokens.includes(t)); if (hit.length >= need) bump(c, hit.reduce((a, t) => a + (HSX.idf.get(t) || 0), 0), hit); });
+    if (!score.size) return none;
+  }
+  // Material check
+  if (mats.length) score.forEach((v, c) => { const named = HSX.h6tok.get(c).materials; if (mats.some(m => named.has(m))) score.set(c, v * 1.5); else if (named.size) score.set(c, v * 0.3); });
+  const ranked = [...score].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+  const [top, second] = ranked, matchedOf = cs => [...new Set(cs.flatMap(c => why.get(c)))];
+  if (!second || top[1] >= 1.5 * second[1]) return { level: 'hs6', codes: [top[0]], heading: top[0].slice(0, 4), matched: matchedOf([top[0]]), source };
+  const tied = ranked.filter(([, v]) => v >= top[1] - 1e-9).map(([c]) => c);
+  if (new Set(tied.map(c => c.slice(0, 4))).size === 1) { const codes = tied.slice().sort(); return { level: 'heading', codes, heading: codes[0].slice(0, 4), matched: matchedOf(codes), source }; }
+  const codes = ranked.filter(([, v]) => v >= top[1] / 1.5).slice(0, 3).map(([c]) => c);
+  return { level: 'list', codes, heading: null, matched: matchedOf(codes), source };
+}
+function hsMaterialsOf(code) { return HSX && HSX.h6tok && HSX.h6tok.has(code) ? [...HSX.h6tok.get(code).materials] : []; }
+// Short label for fix text: the heading's first clause plus the levels below it ("Coffee > Coffee, not roasted > Not decaffeinated").
 function hsShort(desc) {
   if (!desc) return '';
   const parts = desc.split(' > ');
   if (parts.length === 1) { const d = desc.length > 110 ? desc.split(' (')[0].split(';')[0] : desc; return d.length > 110 ? d.slice(0, 107).replace(/[ ,;]+\S*$/, '') + '…' : d; }
-  return `${parts[0].split(/[;,]/)[0]} > ${parts[parts.length - 1]}`;
+  const head = parts[0].split(/[;,]/)[0], all = [head, ...parts.slice(1)].join(' > ');
+  return all.length <= 90 ? all : `${head} > ${parts[parts.length - 1]}`;
 }
 // Codes recommended from the code as entered (never applied; shown with a "Use" action): lost leading zeros, single-subheading headings.
 function hsRecommend(hs) {
@@ -522,6 +588,7 @@ function normaliseBooking(raw) {
     if (!n.description) red(lab, `${lab} has no description.`, 'Describe the product in plain words — customs and the dangerous-goods check need it.');
     n.hs = normHS(it.hs);
     n.hsRec = hsRecommend(n.hs);
+    n.hsSug = n.hs.blank || n.hs.hasLetters || n.hs.digits.length < 6 ? hsSuggest(it.description) : null;   // recommendation only
     const v = (f, label, isCount) => {
       const x = num(it[f]);
       if (x == null) { red(lab, `${lab}: ${label} is missing.`, `Enter ${label} for ${lab}.`); return null; }
@@ -657,16 +724,28 @@ function palletPlan(b, chosenCarrier) {
 
 // ---------- Rulebook evaluation ----------
 // R-01 fix text for one item: index-based recommendations first, the curated hint as the fallback.
+const HS_SOURCE = { curated: 'curated list', reference: 'HMRC search reference', tariff: 'tariff wording' };
+// Wording for a description-based suggestion (design D6): always "suggested — verify", never applied.
+function hsSugText(sug) {
+  if (!sug || sug.level === 'none') return '';
+  const why = `(matched: ${sug.matched.join(', ')}; source: ${HS_SOURCE[sug.source]})`, verify = 'Suggested — verify on trade-tariff.service.gov.uk.';
+  if (sug.level === 'hs6') return `Suggested HS code ${sug.codes[0]} — ${hsShort(HSX.h6.get(sug.codes[0]))} ${why}. ${verify}`;
+  if (sug.level === 'heading') return `Heading ${sug.heading} (${hsShort(HSX.h4.get(sug.heading))}) — choose one of ${sug.codes.join(', ')} ${why}. ${verify}`;
+  return `Possible HS codes: ${sug.codes.map(c => `${c} (${hsShort(HSX.h6.get(c))})`).join('; ')} ${why}. ${verify}`;
+}
 function r01Fix(it) {
-  const d = it.hs.digits || '', rec = it.hsRec || [];
+  const d = it.hs.digits || '', rec = it.hsRec || [], sug = it.hsSug && it.hsSug.level !== 'none' ? it.hsSug : null;
   const lz = rec.find(r => /leading zero/.test(r.why));
   if (lz) return `Add a 6+ digit HS code for ${it.sku} — recommended ${lz.code} (${hsShort(lz.desc)}): the spreadsheet dropped the leading zero, so store the code as text. Verify on trade-tariff.service.gov.uk.`;
   if (!it.hs.blank && !it.hs.hasLetters && d.length === 4) {
     const h = hsHeading(d);
     if (h.known && h.subs.length === 1) return `Add a 6+ digit HS code for ${it.sku} — heading ${d} (${hsShort(h.desc)}) has one subheading: recommended 6-digit code: ${h.subs[0]}.`;
-    if (h.known) return `Add a 6+ digit HS code for ${it.sku} — heading ${d} (${hsShort(h.desc)}) has ${h.subs.length} subheadings; choose the one that matches the item on trade-tariff.service.gov.uk.`;
-    if (h.known === false) return `Add a 6+ digit HS code for ${it.sku} — heading ${d} is not in the UK tariff; look the item up on trade-tariff.service.gov.uk.`;
+    const inHeading = sug && sug.codes.every(c => c.startsWith(d)) ? ` ${hsSugText(sug)}` : '';
+    if (h.known) return `Add a 6+ digit HS code for ${it.sku} — heading ${d} (${hsShort(h.desc)}) has ${h.subs.length} subheadings; choose the one that matches the item on trade-tariff.service.gov.uk.${inHeading}`;
+    if (h.known === false) return `Add a 6+ digit HS code for ${it.sku} — heading ${d} is not in the UK tariff; look the item up on trade-tariff.service.gov.uk.${sug ? ` ${hsSugText(sug)}` : ''}`;
   }
+  if (sug) return `Add a 6+ digit HS code for ${it.sku}. ${hsSugText(sug)}`;
+  if (HSX && it.hsSug) return `Add a 6+ digit HS code for ${it.sku} — no code could be suggested from the description; look it up on the UK Trade Tariff (trade-tariff.service.gov.uk).`;
   const h = hsHint(it.description);
   return `Add a 6+ digit HS code for ${it.sku}${h ? ` — for ${h.label} it is usually ${h.code} (verify on the UK Trade Tariff)` : ' — look it up on the UK Trade Tariff (trade-tariff.service.gov.uk)'}.`;
 }
@@ -869,6 +948,6 @@ function confirmation(ev) {
 
 const PF = { CARRIERS, RULES, PRICE_NOTE, CITY_COUNTRY, ORIGIN_CITIES, COO_LIST, PRIORITIES, EXAMPLE_BOOKING, EXAMPLE_ITEM,
   num, gbp, kg, fmtNum, fmtDate, fmtDateLong, todayISO, addDays, weekday, isoFromYMD, parseSheetDate, normCountry, normCity, normPriority, normDestType, normYesNo, normHS,
-  DG_ADR, scanDG, hsHint, setHsIndex, getHsIndex, hsMeta, hsLookup, hsHeading, hsShort, hsRecommend, parseSheets, normaliseBooking, recommend, palletPlan, evaluate, confirmation, label, isNum, clean, isBlank, MONTHS, DAY_NAMES };
+  DG_ADR, scanDG, hsHint, setHsIndex, getHsIndex, hsMeta, hsLookup, hsHeading, hsShort, hsRecommend, hsTokens, hsSuggest, hsSugText, hsMaterialsOf, HS_MATERIALS, parseSheets, normaliseBooking, recommend, palletPlan, evaluate, confirmation, label, isNum, clean, isBlank, MONTHS, DAY_NAMES };
 if (typeof module !== 'undefined' && module.exports) module.exports = PF; else root.PF = PF;
 })(typeof window !== 'undefined' ? window : globalThis);

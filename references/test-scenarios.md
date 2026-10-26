@@ -84,6 +84,11 @@ Base booking: Manchester → Frankfurt warehouse, 3 pallets, 90 cartons, £5,400
 | H7 | Blank HS with a suggestion available | Still R-01 Red until accepted |
 | H8 | Chat: HS question | Shows usual code + "Use 340600" chip |
 | H9 | Chat: "don't know", later "use 340600" | Suggestion note, then HS set |
+| H10 | Perfume 50 ml (blank HS) | Suggested 330300 from an HMRC search reference, matched "perfume" |
+| H11 | Black tea, 250 g (blank HS) | Heading 0902, choose one of 090210/090220/090230/090240 — no single pick |
+| H12 | Wool socks / Cotton socks (blank HS) | 611594 / 611595 (material decides) |
+| H13 | Misc stock / Widget assembly kit | No suggestion; Trade Tariff link |
+| H14 | Chat: "200 t-shirts…" with no material | Asks "mainly made of" once; "cotton" → Use 610910; "other" → 610990 |
 
 ## D. Dangerous goods (R-06)
 | Description | Expected |

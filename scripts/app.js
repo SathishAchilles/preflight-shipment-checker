@@ -54,15 +54,20 @@ function fixActions(c, ev, mode) {
 }
 // "Use <code>" action: the code is written into the item only when clicked (file) or confirmed by the seller (chat).
 function hsUse(it, i, code) { return { label: `Use ${code} for ${it.sku}`, itemPatch: { i, f: { hs: String(code) } }, say: `HS code for ${(it.description || it.sku).toLowerCase()} is ${code}` }; }
-function hsRecActs(it, i) { return (it.hsRec || []).map(r => hsUse(it, i, r.code)); }
+function hsRecActs(it, i) { const codes = [...(it.hsRec || []).map(r => r.code), ...(it.hsSug ? it.hsSug.codes : [])]; return [...new Set(codes)].map(c => hsUse(it, i, c)); }
 // Recommendations attached to HS advisories (items whose code passes R-01 but lost a leading zero).
 function hsAdvActs(ev) { const r01 = ev.checks.find(c => c.id === 'R-01'), bad = (r01 && r01.items) || []; return ev.b.items.flatMap((it, i) => bad.includes(it.sku) ? [] : hsRecActs(it, i)); }
 function hsStamp() { const m = PF.hsMeta(); return m ? `HS codes checked against UK tariff snapshot ${m.version} (${PF.fmtDate(m.snapshotDate)}) — DBT data, Open Government Licence v3.0.` : null; }
+// "suggested — verify" line for a code that fails R-01 (never written into the item).
+function hsSugLine(it) {
+  const sug = it.hsSug && it.hsSug.level !== 'none' ? it.hsSug.codes : !PF.hsMeta() && PF.hsHint(it.description) ? [PF.hsHint(it.description).code] : [];
+  return sug.length ? h('small', { class: 'hsdesc hssug' }, `suggested ${sug.slice(0, 4).join(' / ')} — verify`) : null;
+}
 function hsCell(it) {
-  if (it.hs.blank) return h('td', { class: 'bad' }, PF.hsHint(it.description) ? `missing — try ${PF.hsHint(it.description).code}` : 'missing');
+  if (it.hs.blank) return h('td', { class: 'bad' }, 'missing', hsSugLine(it));
   const short = it.hs.digits.length < 6 || it.hs.hasLetters, look = short ? { known: null } : PF.hsLookup(it.hs.digits);
   return h('td', { class: short || look.known === false ? 'bad' : '' }, it.hs.raw,
-    look.known ? h('small', { class: 'hsdesc' }, look.desc) : look.known === false ? h('small', { class: 'hsdesc' }, 'not in UK tariff') : null);
+    short ? hsSugLine(it) : look.known ? h('small', { class: 'hsdesc' }, look.desc) : look.known === false ? h('small', { class: 'hsdesc' }, 'not in UK tariff') : null);
 }
 function reportEl(ev, ctx) {
   const { b, checks, dataIssues, advisories, status, rec, eta } = ev;
@@ -265,7 +270,7 @@ function renderSheet() {
     F('gross', 'Gross weight', b.gross != null ? PF.kg(b.gross) : null), F('declared', 'Declared value', declared != null ? PF.gbp(declared) : null, declared != null && !b.declaredStated),
     b.destType === 'Business address' ? F('appointment', 'Appointment', 'Not needed') : F('appointment', 'Appointment', b.appointment),
     F('carrier', 'Carrier', b.carrierOverride || (cs.complete ? 'Recommended' : '—'))));
-  const cellv = (it, i, k, fmt) => { const v = it[k]; const asked = pend && pend.item === i && pend.field === k; const unknown = (k === 'hs' && it.hsUnknown) || (k === 'coo' && it.cooUnknown); const sug = k === 'hs' && v == null ? PF.hsHint(it.description) : null; return h('td', { class: (v == null ? 'empty' : '') + (asked ? ' asking' : '') + (/^(qty|price|upc|cartons|unitWeight)$/.test(k) ? ' num' : '') }, v == null ? (sug ? `suggest ${sug.code}` : unknown ? 'unknown' : '—') : fmt ? fmt(v) : v, it.derived && it.derived[k] ? h('span', { class: 'calc' }, 'calc') : null); };
+  const cellv = (it, i, k, fmt) => { const v = it[k]; const asked = pend && pend.item === i && pend.field === k; const unknown = (k === 'hs' && it.hsUnknown) || (k === 'coo' && it.cooUnknown); const sug = k === 'hs' && v == null ? C.hsSuggestFor(it) : null; return h('td', { class: (v == null ? 'empty' : '') + (asked ? ' asking' : '') + (/^(qty|price|upc|cartons|unitWeight)$/.test(k) ? ' num' : '') }, v == null ? (sug ? h('small', { class: 'hssug' }, `suggested ${sug.codes.slice(0, 4).join(' / ')} — verify`) : unknown ? 'unknown' : '—') : fmt ? fmt(v) : v, it.derived && it.derived[k] ? h('span', { class: 'calc' }, 'calc') : null); };
   s.append(h('div', { class: 'tablewrap' }, h('table', { class: 'itable live' },
     h('thead', null, h('tr', null, ['Item', 'Qty', '£/unit', 'Per ctn', 'Ctns', 'kg/unit', 'HS code', 'Origin'].map((x, i) => h('th', { class: i && i < 6 ? 'num' : '' }, x)))),
     h('tbody', null, b.items.length ? b.items.map((it, i) => h('tr', null, h('td', null, it.description, h('small', null, it.sku)), cellv(it, i, 'qty', PF.fmtNum), cellv(it, i, 'price', PF.gbp), cellv(it, i, 'upc', PF.fmtNum), cellv(it, i, 'cartons', PF.fmtNum), cellv(it, i, 'unitWeight', v => PF.fmtNum(v, 3)), cellv(it, i, 'hs'), cellv(it, i, 'coo')))

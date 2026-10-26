@@ -73,8 +73,8 @@ create or replace view preflight.v_h4 as
   where c.validity_end is null and c.suffix = '80'
     and right(c.code, 6) = '000000' and substr(c.code, 3, 2) <> '00';
 
--- HS-6 subheadings with their path description (D3): from the shallowest hs6||'0000' row
--- (the suffix-80 heading row when hs6 is the heading itself) up to the suffix-80 heading row.
+-- HS-6 subheadings with their path description (D3): from the suffix-80 hs6||'0000' row (else the lowest
+-- suffix) up to the suffix-80 heading row, so grouping rows ('Other') never end the path.
 create or replace view preflight.v_h6 as
   with recursive cur as (select version from preflight.v_current),
   hs as (select distinct left(code, 6) as hs6 from preflight.v_leaf),
@@ -82,7 +82,7 @@ create or replace view preflight.v_h6 as
     select distinct on (hs.hs6) hs.hs6, l.version, l.sid, l.code, l.suffix, l.description, l.parent_sid
     from hs join preflight.tariff_commodity l on l.code = (hs.hs6 || '0000')::char(10)
     where l.version = (select version from cur) and l.validity_end is null
-    order by hs.hs6, (l.suffix = '80' and right(hs.hs6, 2) = '00') desc, l.suffix
+    order by hs.hs6, (l.suffix = '80') desc, l.suffix
   ),
   walk as (
     select hs6, version, sid, code, suffix, description, parent_sid, 0 as depth from start

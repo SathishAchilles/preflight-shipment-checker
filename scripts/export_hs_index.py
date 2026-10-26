@@ -25,7 +25,13 @@ select json_build_object(
                'refs', (select count(*) from preflight.v_refs)))
            from preflight.v_current s),
   'h4',   (select json_object_agg(h4, description order by h4) from preflight.v_h4),
-  'h6',   (select json_object_agg(hs6, description order by hs6) from preflight.v_h6),
+  -- h6 paths are stored relative to their heading ('> Of cotton'; '' when the code is the heading itself);
+  -- the engine joins them back onto h4, so 5,717 copies of heading text are not shipped.
+  'h6',   (select json_object_agg(x.hs6, case
+                when x.description = h.description then ''
+                when left(x.description, length(h.description) + 3) = h.description || ' > ' then '> ' || substr(x.description, length(h.description) + 4)
+                else x.description end order by x.hs6)
+           from preflight.v_h6 x left join preflight.v_h4 h on h.h4 = left(x.hs6, 4)),
   'cn8',  (select json_agg(cn8 order by cn8) from preflight.v_cn8),
   'l10',  (select json_agg(l10 order by l10) from preflight.v_l10),
   'refs', (select json_agg(json_build_array(title, prefix, cls) order by prefix, title, cls) from preflight.v_refs)
