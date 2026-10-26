@@ -430,6 +430,7 @@ function turn(stIn, text, today) {
     reply.diff = checkDiff(st.lastEval, ev);
     reply.status = ev.status; reply.showReport = !st.complete || reply.changes.length > 0 || P.intents.includes('summary') || P.intents.includes('confirm');
     reply.firstComplete = !st.complete; st.complete = true;
+    if (ev.rec && !st.priceNoteShown) { reply.priceNote = PF.PRICE_NOTE; st.priceNoteShown = true; }
     st.lastEval = { checks: ev.checks.map(c => ({ id: c.id, status: c.status })), status: ev.status };
     if (P.intents.includes('confirm')) {
       if (ev.status === 'Red') reply.intent = 'confirm-blocked';

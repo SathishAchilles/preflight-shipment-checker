@@ -82,6 +82,22 @@ add(bk('TB-19','Mossbank Ltd','Leeds','Amsterdam','Netherlands','Warehouse','18-
 add(bk('TB-20','Hearth & Flue','Birmingham','Hamburg','Germany','Business address','23-11-2026','Cheapest',2,20,9000,1600,'No'),
     [it('TB-20','STV-01','Cast iron log burner stove',732189,20,450,1,20,75,'Turkey')],
     '800 kg per pallet — over every carrier limit (max 750)','Red','R-05 (fix: Carrier B on 3 pallets, £660)','Re-pack → Carrier B · Road standard (£660)')
+add(bk('TB-21','Confetti & Co','London','Paris','France','Business address','19-11-2026','Cheapest',1,20,1600,150,'No'),
+    [it('TB-21','PP-01','Party poppers, box of 50',950590,200,8,10,20,0.4,'China')],
+    'Party poppers — ADR class 1 (fireworks), outside the R-06 categories','Green','— (Advisory: possible dangerous goods, ADR class 1)','Carrier A · Road economy (£170)')
+add(bk('TB-22','Blue Lagoon Pools','Birmingham','Amsterdam','Netherlands','Business address','20-11-2026','Cheapest',2,25,3000,600,'No'),
+    [it('TB-22','CHL-01','Pool chlorine granules 5 kg tub',380894,100,30,4,25,5.2,'China')],
+    'Pool chlorine — ADR class 5.1 (oxidiser), outside the R-06 categories','Green','— (Advisory: possible dangerous goods, ADR class 5.1)','Carrier A · Road economy (£320)')
+add(bk('TB-23','Toolbox Toys','Leeds','Berlin','Germany','Business address','18-11-2026','Cheapest',1,30,2400,200,'No'),
+    [it('TB-23','SL-01','Spirit level 60 cm',901580,100,12,10,10,0.5,'China'),
+     it('TB-23','MC-01','Matchbox car set',950300,200,6,10,20,0.3,'China')],
+    'Look-alike words: “spirit level” and “matchbox car” are not dangerous goods','Green','—','Carrier A · Road economy (£180)')
+add(bk('TB-24','Loom & Larder','London','Lyon','France','Business address','19-11-2026','Cheapest',4,40,4000,600,'No'),
+    [it('TB-24','BLK-01','Wool blanket, double',630120,200,20,5,40,2.0,'United Kingdom')],
+    '600 kg on 4 pallets — 2 pallets are enough by weight','Green','— (Advisory: 2 pallets enough, saving £340)','Carrier A · Road economy (£680)')
+add(bk(' tb-05 ','Alder Home','London','Hamburg','Germany','Warehouse','23-11-2026','Most reliable',1,10,900,120,'Yes'),
+    [],
+    'Booking ID “ tb-05 ” repeats TB-05 (different case and spaces)','Red','Data: duplicate Booking ID (its items cannot be matched)','Carrier C · Road express (£340)')
 items.append(['TB-99','GHOST-01','Item pointing at a booking that does not exist',691200,10,1,10,1,0.5,'China'])
 expected.append(['TB-99 (Items only)','Item row whose Booking ID is not on the Bookings sheet','Notice','Reported as an orphan item row, not checked','—'])
 
@@ -101,7 +117,7 @@ for r, row in enumerate(items, start=4):
 # Expected results sheet
 E = wb.create_sheet('Expected results', 2)
 hdr = ['Booking ID', 'Planted mistake / edge case', 'Expected status', 'Rules expected to flag', 'Expected carrier']
-E['A1'] = 'Test cases — what Preflight should report for each booking above (checked on or before 16-11-2026; after that, every date becomes “past” and R-10 fires).'
+E['A1'] = 'Test cases — what Preflight should report for each booking above (advisories never change the status) (checked on or before 16-11-2026; after that, every date becomes “past” and R-10 fires).'
 E['A1'].font = Font(name='Arial', bold=True, size=11)
 for c, h in enumerate(hdr, 1):
     x = E.cell(2, c, h); x.font = Font(name='Arial', bold=True, color='FFFFFF'); x.fill = PatternFill('solid', fgColor='1F3864'); x.alignment = Alignment(vertical='center', wrap_text=True)

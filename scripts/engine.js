@@ -30,6 +30,7 @@ const CITY_COUNTRY = { Berlin: 'Germany', Frankfurt: 'Germany', Hamburg: 'German
 const ORIGIN_CITIES = ['London', 'Manchester', 'Birmingham', 'Leeds'];
 const COO_LIST = ['United Kingdom', 'China', 'India', 'Vietnam', 'Turkey', 'Germany'];
 const PRIORITIES = ['Cheapest', 'Fastest', 'Most reliable', 'Balanced'];
+const PRICE_NOTE = 'Indicative rate per pallet for the destination country. Actual prices vary by collection and delivery city, fuel surcharge and date — confirm with the carrier.';
 const EXAMPLE_BOOKING = ['BK-001', 'Northfield Goods', 'Manchester', 'United Kingdom', 'Frankfurt', 'Germany', 'Warehouse', '05-11-2026', 'Cheapest', 3, 90, 5400, 'GBP', 620, 'Yes'];
 const EXAMPLE_ITEM = ['BK-001', 'MUG-01', 'Ceramic coffee mug, 350 ml', 691200, 1080, 5, 12, 90, 0.5, 'United Kingdom'];
 
@@ -159,23 +160,50 @@ function normHS(v) {
 const DG_DEFINITE = [
   { cat: 'lithium batteries', re: /\blithium\b|\bli-?ion\b|\bli-?po(?:ly|lymer)?\b|\blifepo4\b|\b(?:18650|21700|cr2032|cr2025|cr2016|cr123a?)\b|\bpower ?banks?\b|\be-?cig(?:arette)?s?\b|\bvapes?\b|\bvape pens?\b|\be-?bikes?\b|\be-?scooters?\b|\bhoverboards?\b/i },
   { cat: 'aerosols', re: /\baerosols?\b|\bspray ?cans?\b|\bspray ?paints?\b|\bhair ?sprays?\b|\b(?:deodorant|body|cooking oil) sprays?\b|\bspray (?:deodorant|polish|adhesive|lubricant|foam|starch)\b|\bcompressed (?:gas|air)\b|\bpressuri[sz]ed (?:can|canister|container)s?\b|\bco2 (?:cartridge|canister)s?\b|\b(?:cream|nitrous) (?:charger|canister)s?\b|\bdry shampoo\b|\bwd-?40\b|\bshaving foam\b/i },
-  { cat: 'flammable liquids', re: /\b(?:in)?flammable\b|\bperfumes?\b|\beau de (?:parfum|toilette|cologne)\b|\bcolognes?\b|\bnail (?:polish|varnish)\b|\bacetone\b|\bpetrol\b|\bgasoline\b|\bdiesel\b|\bkerosene\b|\bparaffin oil\b|\blighter (?:fluid|refills?|gas)\b|\bmethylated spirits?\b|\bwhite spirit\b|\bturpentine\b|\bthinners?\b|\bethanol\b|\bisopropyl\b|\brubbing alcohol\b|\bhand sanitis(?:er|ing)\b|\bhand saniti[sz]er\b|\bsolvent[- ]based\b|\bfuel\b|\blamp oil\b|\bmeths\b/i },
+  { cat: 'flammable liquids', re: /\b(?:in)?flammable\b|\bperfumes?\b|\beau de (?:parfum|toilette|cologne)\b|\bcolognes?\b|\bnail (?:polish|varnish)\b|\bacetone\b|\bpetrol\b|\bgasoline\b|\bdiesel\b|\bkerosene\b|\bparaffin oil\b|\blighter (?:fluid|refills?|gas)\b|\bmethylated spirits?\b|\bwhite spirit\b|\bturpentine\b|\bthinners?\b|\bethanol\b|\bmethanol\b|\bmethyl alcohol\b|\bisopropyl\b|\brubbing alcohol\b|\bhand sanitis(?:er|ing)\b|\bhand saniti[sz]er\b|\bsolvent[- ]based\b|\bfuel\b(?! tablets?)|\blamp oil\b|\bmeths\b/i },
 ];
 const DG_POSSIBLE = [
-  { cat: 'lithium batteries', why: 'it may contain a lithium battery', re: /\bbatter(?:y|ies)\b|\brechargeable\b|\b(?:bluetooth|wireless) (?:speakers?|earbuds|headphones|earphones)\b|\bsmart ?watch(?:es)?\b|\bfitness trackers?\b|\bcordless\b|\blaptops?\b(?! (?:bags?|sleeves?|stands?|cases?|covers?))|\bsmart ?phones?\b(?! (?:cases?|covers?|stands?|holders?|mounts?))|\bmobile phones?\b(?! (?:cases?|covers?|stands?|holders?|mounts?))|\btablets?\b(?! (?:cases?|covers?|stands?|holders?))|\bdrones?\b/i },
+  { cat: 'lithium batteries', why: 'it may contain a lithium battery', re: /\bbatter(?:y|ies)\b|\brechargeable\b|\b(?:bluetooth|wireless) (?:speakers?|earbuds|headphones|earphones)\b|\bsmart ?watch(?:es)?\b|\bfitness trackers?\b|\bcordless\b|\blaptops?\b(?! (?:bags?|sleeves?|stands?|cases?|covers?))|\bsmart ?phones?\b(?! (?:cases?|covers?|stands?|holders?|mounts?))|\bmobile phones?\b(?! (?:cases?|covers?|stands?|holders?|mounts?))|\b(?:ipads?|(?:android|samsung|galaxy|lenovo|kindle|fire|kids'?|drawing|graphics) tablets?)\b|\btablets?\b(?= (?:computers?|pcs?|devices?)\b|[^,.;]*\b(?:inch|screen|wi-?fi|android|\d+ ?gb)\b)|\bdrones?\b/i },
   { cat: 'aerosols', why: 'it may be pressurised', re: /\bsprays?\b(?! bottles?)|\bmist\b/i },
   { cat: 'flammable liquids', why: 'it may contain a flammable liquid', re: /\bpaints?\b|\bvarnish\b|\bglue\b|\badhesive\b|\bessential oils?\b|\breed diffusers?\b|\bdiffuser oils?\b|\bfragrance oils?\b|\bvodka\b|\bwhisk(?:e)?y\b|\bgin\b|\brum\b|\bliqueurs?\b|\bbrandy\b|\bspirits\b|\balcohol\b|\blighters?\b(?! (?:weight|colou?r|shade))|\bresin\b|\bcamping gas\b/i },
 ];
+// Tier 2: other ADR classes found in ordinary goods (UK → EU road). Advisory only — R-06 above is the rulebook.
+// Each entry: ADR class, category, description regex, typical UN numbers, and when the item is not regulated.
+const DG_ADR = [
+  { cls: '1', cat: 'fireworks, pyrotechnics, ammunition and tool cartridges', re: /\bfireworks?\b|\bsparklers?\b|\bparty poppers?\b|\b(?:christmas|xmas) crackers?\b|\bflares?\b|\bsmoke (?:grenades?|bombs?)\b|\bammunition\b|\bnail ?gun cartridges?\b|\bgunpowder\b|\bblack powder\b|\brocket motors?\b/i, un: ['UN0336', 'UN0337', 'UN0191', 'UN0197', 'UN0507', 'UN0012', 'UN0014', 'UN0323', 'UN0027', 'UN0161'], ok: 'There is no exemption for normal freight: it needs an ADR explosives carrier, and Eurotunnel refuses pyrotechnics.' },
+  { cls: '2', cat: 'gas cartridges, lighters and gas cylinders', re: /\bgas (?:cartridges?|canisters?|cylinders?|bottles?|refills?)\b|\bbutane\b|\bpropane\b|\blpg\b|\bblow ?torch(?:es)?\b|(?<!fire )\blighters?\b(?! (?:weight|colou?r|shade))|\bhelium (?:canisters?|tanks?|cylinders?|balloon kits?)\b|\bco2 cylinders?\b|\bsodastream (?:cylinders?|gas)\b|\bnitrous oxide\b|\boxygen (?:cylinders?|tanks?|bottles?)\b|\bscuba tanks?\b|\bdiving cylinders?\b/i, un: ['UN2037', 'UN1057', 'UN1965', 'UN1978', 'UN3150', 'UN1046', 'UN1013', 'UN1070', 'UN1072'], ok: 'Not regulated if the cylinder or cartridge is empty.' },
+  { cls: '2', cat: 'fire extinguishers', re: /\bfire extinguishers?\b/i, un: ['UN1044'], ok: 'Not regulated when packed in strong outer packaging with the trigger protected (ADR special provision 594).' },
+  { cls: '2 (toxic, label 2.3)', cat: 'toxic gases', re: /\bchlorine gas\b|\banhydrous ammonia\b|\bammonia gas\b/i, un: ['UN1017', 'UN1005'], ok: 'There is no exemption: Eurotunnel and most road groupage refuse toxic gases.' },
+  { cls: '4.1', cat: 'flammable solids', re: /\bmatches\b|\bmatchsticks?\b|\bfire ?lighters?\b|\bfuel tablets?\b|\bhexamine\b|\bmoth ?balls?\b|\bnaphthalene\b|\bslug pellets?\b|\bmetaldehyde\b/i, un: ['UN1944', 'UN1331', 'UN1945', 'UN2623', 'UN1328', 'UN1334', 'UN1332'], ok: 'It can travel as a declared limited quantity (inner packs up to 5 kg).' },
+  { cls: '4.2', cat: 'self-heating substances', re: /\bcharcoal\b|\bactivated carbon\b|\bcolou?r run removers?\b|\bsodium dithionite\b/i, un: ['UN1361', 'UN1362', 'UN1384'], ok: "Not regulated if the supplier's safety data sheet shows it is not classified as self-heating; steam-activated carbon is not subject (special provision 646)." },
+  { cls: '4.3', cat: 'water-reactive substances', re: /\bcalcium carbide\b|\bsodium metal\b|\b(?:flameless )?ration heaters?\b/i, un: ['UN1402', 'UN1428', 'UN2813'], ok: 'There is no exemption for normal freight; for ration heaters, section 14 of the safety data sheet decides (air-activated heaters are reportedly not regulated).' },
+  { cls: '5.1', cat: 'oxidisers', re: /\bpool chlorine\b|\bchlorine (?:tablets?|granules?|shock)\b|\bpool shock\b|\btrichlor\b|\bdichlor\b|\bcalcium hypochlorite\b|\bstump (?:remover|killer)s?\b|\bpotassium (?:permanganate|nitrate)\b|\bsodium chlorate\b|\bhydrogen peroxide\b/i, un: ['UN2880', 'UN1748', 'UN2468', 'UN2465', 'UN1486', 'UN1490', 'UN1495', 'UN2984', 'UN2014'], ok: 'Hydrogen peroxide below 8% is not regulated; the others need ADR paperwork.' },
+  { cls: '5.2', cat: 'organic peroxides', re: /\bbody filler hardeners?\b|\b(?:filler|fibreglass|fiberglass|resin) (?:hardeners?|catalysts?)\b|\bmekp\b|\bbenzoyl peroxide paste\b/i, un: ['UN3105', 'UN3106', 'UN3108'], ok: 'There is no exemption for normal freight; the resin half of a filler kit is also a flammable liquid.' },
+  { cls: '6.1', cat: 'toxic substances', re: /\bpesticides?\b|\binsecticides?\b|\brat poison\b|\brodenticides?\b|\b(?:rat|mouse) bait\b|\bweed ?killer concentrate\b|\bconcentrated weed ?killer\b|\bpaint strippers?\b|\bdichloromethane\b|\bnicotine (?:concentrate|liquid|base)\b/i, un: ['UN2588', 'UN2902', 'UN3027', 'UN1593', 'UN3144'], ok: "Not regulated if the product's safety data sheet shows no ADR class (true of many ready-to-use garden products)." },
+  { cls: '6.2', cat: 'infectious substances', re: /\bbiological (?:specimens?|samples?)\b|\bdiagnostic specimens?\b|\bclinical waste\b|\bsharps waste\b/i, un: ['UN3373', 'UN3291'], ok: 'There is no exemption: most road carriers refuse class 6.2.' },
+  { cls: '7', cat: 'radioactive material', re: /\bioni[sz]ation smoke (?:alarms?|detectors?)\b|\bsmoke (?:alarms?|detectors?)\b|\btritium\b|\bthorium\b|\bgas mantles?\b/i, un: ['UN2911', 'UN2909'], ok: 'Optical (photoelectric) smoke alarms are not radioactive; ionisation units are excepted once sold to the end user, but bulk stock is regulated.' },
+  { cls: '8', cat: 'wet and lead-acid batteries', re: /\b(?:car|leisure|motorcycle|agm|gel) batter(?:y|ies)\b|\blead[- ]acid\b/i, un: ['UN2794', 'UN2795', 'UN2800'], ok: 'New batteries secured and protected against short circuit (special provision 598), or non-spillable batteries (special provision 238), are not regulated; Pall-Ex refuses car batteries anyway.' },
+  { cls: '8', cat: 'corrosive cleaners', re: /\bdrain (?:cleaners?|unblockers?)\b|\bcaustic soda\b|\bsodium hydroxide\b|\boven cleaners?\b|\b(?:brick|patio) acid\b|\b(?:hydrochloric|hydrofluoric|sulphuric|sulfuric) acid\b|\balloy wheel cleaners?\b|\bdescalers?\b|\bammonia\b/i, un: ['UN1823', 'UN1719', 'UN1760', 'UN1789', 'UN1790'], ok: "Not regulated if the product's safety data sheet says it is not classified." },
+  { cls: '8', cat: 'mercury in articles', re: /\bmercury (?:thermometers?|barometers?)\b/i, un: ['UN3506'], ok: 'Articles with 1 kg of mercury or less each are not regulated (special provision 366).' },
+  { cls: '9', cat: 'sodium-ion batteries', re: /\bsodium[- ]ion\b|\bna[- ]ion\b/i, un: ['UN3551', 'UN3552'], ok: 'There is no general exemption.' },
+  { cls: '9', cat: 'fuelled engines and machinery', re: /\bchainsaws?\b|\blawn ?mowers?\b|\b(?:power|petrol|diesel|portable) generators?\b|\boutboard (?:motors?|engines?)\b|\bstrimmers?\b/i, un: ['UN3528', 'UN3529', 'UN3530'], ok: 'Not regulated if the fuel tank has been drained and the engine run dry; battery models are covered by R-06.' },
+  { cls: '9', cat: 'dry ice', re: /\bdry ice\b|\bsolid co2\b|\bcardice\b/i, un: ['UN1845'], ok: 'Not subject to ADR except the coolant rules (5.5.3): mark the package as containing dry ice as coolant.' },
+  { cls: '9', cat: 'life-saving appliances and kits', re: /\bauto(?:matic)?[- ]?inflat(?:ing|able) life ?jackets?\b|\blife ?jacket re-?arm kits?\b|\bchemistry sets?\b/i, un: ['UN2990', 'UN3316'], ok: 'There is no general exemption.' },
+  { cls: '9', cat: 'airbags and seatbelt pretensioners', re: /\bair ?bags?\b|\bseat ?belt pretensioners?\b/i, un: ['UN3268'], ok: 'There is no general exemption.' },
+  { cls: '9', cat: 'environmentally hazardous substances', re: /\bmarine pollutants?\b|\benvironmentally hazardous\b/i, un: ['UN3077', 'UN3082'], ok: 'Not regulated at 5 L / 5 kg or less per package (special provision 375).' },
+];
+// Phrases that look like a hazard keyword but are not; removed before the tier-2 scan.
+const DG_SAFE = /\bbattery[- ]free\b|\bbattery chargers?\b|\bgas[- ]free\b|\bgas mark\b|\bgas hobs?\b|\bmatchbox\b|\bmatching\b|\bfire ?pits?\b|\bfire blankets?\b|\bspirit levels?\b|\bteam spirit\b|\bcharcoal (?:gr[ae]y|black|colou?r|toothpaste|soap|face ?masks?)\b|\bacid[- ]wash(?:ed)?\b|\b(?:hyaluronic|amino|salicylic|citric) acid\b|\bchlorine[- ]free\b|\bmercury[- ]free\b|\bfreddie mercury\b|\b(?:optical|photoelectric) smoke (?:alarms?|detectors?)\b|\bco2[- ]neutral\b|\bcarbon[- ]neutral\b|\bhelium[- ]free\b|\btoy rockets?\b|\bengine oil\b|\bsearch engine\b|\bflared?\s+(?:jeans|trousers|leg|skirts?)\b|\b(?:ink|toner|water filter|filter) cartridges?\b|\b[0-7](?:\.\d+)?\s*% hydrogen peroxide\b|\bhydrogen peroxide\s*[0-7](?:\.\d+)?\s*%/gi;
 const NEG_BEFORE = /\b(?:no|non|without|free of|zero|not|excluding|excl\.?)[\s-]+(?:\w+[\s-]+){0,2}$/i;
 const NEG_AFTER = /^[\s-]*(?:free|not included|excluded|not supplied|sold separately)\b/i;
 function scanDG(text) {
   const t = clean(text);
-  const out = { definite: [], possible: [] };
+  const out = { definite: [], possible: [], adr: [] };
   if (!t) return out;
-  const hits = (re) => {
+  const hits = (re, src = t) => {
     const g = new RegExp(re.source, 'gi'); let m; const found = [];
-    while ((m = g.exec(t))) {
-      const before = t.slice(0, m.index), after = t.slice(m.index + m[0].length);
+    while ((m = g.exec(src))) {
+      const before = src.slice(0, m.index), after = src.slice(m.index + m[0].length);
       if (NEG_BEFORE.test(before) || NEG_AFTER.test(after)) continue;
       found.push(m[0]);
     }
@@ -185,6 +213,13 @@ function scanDG(text) {
   for (const d of DG_POSSIBLE) {
     if (out.definite.some(x => x.cat === d.cat)) continue;
     const f = hits(d.re); if (f.length) out.possible.push({ cat: d.cat, why: d.why, words: [...new Set(f.map(x => x.toLowerCase()))] });
+  }
+  out.adr = [];
+  if (out.definite.length) return out; // R-06 Red already stops the item
+  const safeText = t.replace(DG_SAFE, ' ');
+  for (const d of DG_ADR) {
+    const f = hits(d.re, safeText);
+    if (f.length) out.adr.push({ cls: d.cls, cat: d.cat, words: [...new Set(f.map(x => x.toLowerCase()))], un: d.un, ok: d.ok });
   }
   return out;
 }
@@ -357,7 +392,7 @@ function parseSheets(sheets, opts = {}) {
       currency: g('currency'), gross: g('gross'), appointment: g('appointment'), items: [],
     };
     if (!b.id) b.id = `(row ${r + 1})`;
-    const key = b.id.toUpperCase();
+    const key = clean(b.id).toUpperCase();
     if (byId.has(key)) { b.duplicateOf = byId.get(key).rowNum; }
     else byId.set(key, b);
     bookings.push(b);
@@ -534,6 +569,51 @@ function recommend(b) {
   return rec;
 }
 
+// ---------- Pallet plan (weight only; a recommendation, never applied by itself) ----------
+const PALLET_TARE_KG = 25;
+const SPLIT_MAX_CARTONS = 2000;
+function palletPlan(b, chosenCarrier) {
+  if (!b.destCountry) return null;
+  const items = b.items || [];
+  let weight = null, estimated = false;
+  if (isNum(b.gross) && b.gross > 0) weight = b.gross;
+  else if (items.length && items.every(it => isNum(it.unitWeight) && isNum(it.qty))) {
+    const net = items.reduce((a, it) => a + it.unitWeight * it.qty, 0);
+    weight = round2(net + PALLET_TARE_KG * Math.max(1, isNum(b.pallets) && b.pallets > 0 ? b.pallets : 1));
+    estimated = true;
+  }
+  if (weight == null) return null;
+  const perCarrier = carriersFor(b.destCountry).map(c => {
+    const minPallets = Math.max(1, Math.ceil(weight / c.maxW - 1e-9));
+    return { carrier: c.carrier, service: c.service, maxW: c.maxW, minPallets, perPallet: round2(weight / minPallets), cost: c.price * minPallets };
+  });
+  const chosen = perCarrier.find(p => p.carrier === chosenCarrier) || null;
+  let fewer = null;
+  if (chosen && isNum(b.pallets) && Number.isInteger(b.pallets) && b.pallets > chosen.minPallets) {
+    const price = carriersFor(b.destCountry).find(c => c.carrier === chosen.carrier).price;
+    fewer = { carrier: chosen.carrier, from: b.pallets, to: chosen.minPallets, perPallet: chosen.perPallet, saving: price * (b.pallets - chosen.minPallets) };
+  }
+  // Carton split: heaviest carton first onto the lightest pallet (LPT). Balances goods weight only.
+  let split = null, splitNote = null;
+  const n = chosen ? chosen.minPallets : null;
+  if (!n) splitNote = 'No carrier chosen, so no carton split.';
+  else if (!items.length || !items.every(it => isNum(it.upc) && isNum(it.unitWeight) && isNum(it.cartons) && Number.isInteger(it.cartons) && it.cartons > 0)) splitNote = 'Carton split needs units per carton, unit weight and a whole number of cartons for every item.';
+  else if (items.reduce((a, it) => a + it.cartons, 0) > SPLIT_MAX_CARTONS) splitNote = `More than ${SPLIT_MAX_CARTONS} cartons — carton split skipped.`;
+  else {
+    const cartons = [];
+    items.forEach(it => { const w = it.upc * it.unitWeight; for (let k = 0; k < it.cartons; k++) cartons.push({ sku: it.sku, w }); });
+    cartons.sort((x, y) => y.w - x.w || (x.sku < y.sku ? -1 : x.sku > y.sku ? 1 : 0));
+    split = Array.from({ length: n }, (_, i) => ({ pallet: i + 1, kg: 0, cartons: {} }));
+    for (const c of cartons) {
+      let t = split[0];
+      for (const p of split) if (p.kg < t.kg - 1e-9) t = p;
+      t.kg += c.w; t.cartons[c.sku] = (t.cartons[c.sku] || 0) + 1;
+    }
+    split.forEach(p => { p.kg = round2(p.kg); });
+  }
+  return { weight, estimated, perCarrier, chosen: chosen ? chosen.carrier : null, fewer, split, splitNote };
+}
+
 // ---------- Rulebook evaluation ----------
 function evaluate(rawOrNorm, opts = {}) {
   const today = opts.today || todayISO();
@@ -656,6 +736,15 @@ function evaluate(rawOrNorm, opts = {}) {
   if (net != null && isNum(b.gross) && near(b.gross, net, 1e-6) && b.gross > 0) advisories.push('Gross weight equals the goods weight exactly, with nothing for cartons or pallets — it is probably the net weight.');
   items.forEach(it => { if (!it.hs.blank && !it.hs.hasLetters && it.hs.digits.length > 10) advisories.push(`${it.sku}: HS code has ${it.hs.digits.length} digits; UK/EU commodity codes are at most 10.`); });
   if (isNum(b.pallets) && isNum(b.cartons) && b.pallets > b.cartons) advisories.push(`More pallets (${b.pallets}) than cartons (${b.cartons}) — check the pallet count.`);
+  items.forEach(it => {
+    const adr = scanDG(`${it.description} ${it.sku}`).adr;
+    if (!adr.length) return;
+    const classes = [...new Set(adr.map(d => d.cls))].join(', ');
+    const what = adr.map(d => `ADR class ${d.cls} ${d.cat} (matched “${d.words.join('”, “')}”; typical ${d.un.join(', ')})`).join('; ');
+    advisories.push(`Possible dangerous goods (ADR class ${classes}) — ${it.sku} (“${it.description}”) may be ${what}. ${adr.map(d => d.ok).join(' ')} Otherwise it needs an ADR-capable carrier and the supplier's safety data sheet (SDS); pallet networks usually refuse it — confirm with the carrier or remove the item.`);
+  });
+  const plan = rec ? palletPlan(b, rec.chosen.carrier) : null;
+  if (plan && plan.fewer) { const f = plan.fewer; const c = rec.opts.find(o => o.carrier === f.carrier); advisories.push(`By weight, ${f.to} pallet${f.to === 1 ? ' is' : 's are'} enough on ${label(c)} (${kg(f.perPallet)} each), saving ${gbp(f.saving)} — check volume and stacking height before changing.`); }
 
   // Overall status
   const reds = checks.filter(c => c.status === 'fail' && c.sev === 'Red').length + b.dataIssues.filter(i => i.sev === 'Red').length;
@@ -671,7 +760,7 @@ function evaluate(rawOrNorm, opts = {}) {
     const arrive = nextWorkingDay(arriveRaw);
     eta = { collect, arrive, movedCollect: collect !== start, movedArrive: arrive !== arriveRaw, fromToday: b.ready < today };
   }
-  return { b, checks, dataIssues: b.dataIssues, advisories, status, reds, ambers, rec, eta, net, today };
+  return { b, checks, dataIssues: b.dataIssues, advisories, status, reds, ambers, rec, plan, eta, net, today };
 }
 
 // ---------- Plain-language confirmation ----------
@@ -700,8 +789,8 @@ function confirmation(ev) {
   return { head, lines, next };
 }
 
-const PF = { CARRIERS, RULES, CITY_COUNTRY, ORIGIN_CITIES, COO_LIST, PRIORITIES, EXAMPLE_BOOKING, EXAMPLE_ITEM,
+const PF = { CARRIERS, RULES, PRICE_NOTE, CITY_COUNTRY, ORIGIN_CITIES, COO_LIST, PRIORITIES, EXAMPLE_BOOKING, EXAMPLE_ITEM,
   num, gbp, kg, fmtNum, fmtDate, fmtDateLong, todayISO, addDays, weekday, isoFromYMD, parseSheetDate, normCountry, normCity, normPriority, normDestType, normYesNo, normHS,
-  scanDG, hsHint, parseSheets, normaliseBooking, recommend, evaluate, confirmation, label, isNum, clean, isBlank, MONTHS, DAY_NAMES };
+  DG_ADR, scanDG, hsHint, parseSheets, normaliseBooking, recommend, palletPlan, evaluate, confirmation, label, isNum, clean, isBlank, MONTHS, DAY_NAMES };
 if (typeof module !== 'undefined' && module.exports) module.exports = PF; else root.PF = PF;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -27,7 +27,7 @@ A single self-contained HTML app (no backend, no login) that:
 ## Workflow
 1. `cd scripts && npm i xlsx@0.18.5` (Node verification only).
 2. Change logic in `engine.js` / `chat.js`; add a test in `tests.js` for every new behaviour.
-3. `node run.js` → must be 100% pass. `node verify.js` → all 20 bookings match "Expected results".
+3. `node run.js` → must be 100% pass. `node verify.js` → all 25 bookings (plus the TB-99 orphan notice) match "Expected results". It needs the `xlsx` npm package (`npm i xlsx@0.18.5` outside the repo, then `NODE_PATH=…/node_modules node verify.js`).
 4. `python3 build.py` → `preflight.html`. Host anywhere static (Netlify drag-and-drop works); turn off visitor login.
 
 ## Non-negotiables

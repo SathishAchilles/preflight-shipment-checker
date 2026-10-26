@@ -126,4 +126,28 @@ Base booking: Manchester → Frankfurt warehouse, 3 pallets, 90 cartons, £5,400
 | F22 | "start over" | Reset |
 
 ## G. End-to-end workbook (assets/Preflight_Test_Cases.xlsx)
-TB-01 clean · TB-02 R-01 · TB-03 R-02 · TB-04 R-03 · TB-05 R-04 · TB-06 R-05 cheapest · TB-07 R-05 fastest · TB-08 R-06 · TB-09 R-06 confirm · TB-10 R-07 · TB-11 R-08 · TB-12 R-09 · TB-13 R-10 · TB-14 business address green · TB-15 six errors · TB-16 format edge cases green · TB-17 boundaries green · TB-18 city/country mismatch · TB-19 no items · TB-20 over every carrier · TB-99 orphan item. Expected: 20/20 match (valid until 16-11-2026).
+TB-01 clean · TB-02 R-01 · TB-03 R-02 · TB-04 R-03 · TB-05 R-04 · TB-06 R-05 cheapest · TB-07 R-05 fastest · TB-08 R-06 · TB-09 R-06 confirm · TB-10 R-07 · TB-11 R-08 · TB-12 R-09 · TB-13 R-10 · TB-14 business address green · TB-15 six errors · TB-16 format edge cases green · TB-17 boundaries green · TB-18 city/country mismatch · TB-19 no items · TB-20 over every carrier · TB-21 party poppers (ADR 1 advisory, Green) · TB-22 pool chlorine (ADR 5.1 advisory, Green) · TB-23 spirit level + matchbox car (no DG, Green) · TB-24 4 pallets for 600 kg (fewer-pallets advisory, Green) · TB-25 “ tb-05 ” duplicate ID (Red) · TB-99 orphan item. Expected: 25/25 match plus the TB-99 notice (valid until 16-11-2026).
+
+## H. Coverage matrix (planted bookings per check)
+Every rule and extra check has at least one planted booking in `assets/Preflight_Test_Cases.xlsx`; unit tests in `scripts/tests.js` cover the edge cases.
+
+| Check | Severity | Planted booking(s) |
+|---|---|---|
+| R-01 HS code ≥ 6 digits | Red | TB-02 (blank, 4-digit `6115`), TB-15 (blank); TB-16 (`6912.00`, text `090240` pass) |
+| R-02 Declared value ±1% | Red | TB-03, TB-15; TB-17 (exactly +1%, pass) |
+| R-03 Units × cartons = quantity | Red | TB-04 |
+| R-04 Booking cartons = item cartons | Red | TB-05, TB-15 |
+| R-05 Weight per pallet ≤ carrier max | Red | TB-06 (cheapest), TB-07 (fastest), TB-20 (over every carrier); TB-17 (exactly 500 kg, pass) |
+| R-06 Lithium, aerosols, flammable liquids | Red / check | TB-08 (Red), TB-09 (check) |
+| R-07 Gross ≥ goods weight | Amber | TB-10 |
+| R-08 Warehouse appointment | Amber | TB-11, TB-15; TB-14 (business address, n/a) |
+| R-09 Country of origin | Amber | TB-12, TB-15 |
+| R-10 Ready date not in the past | Amber | TB-13, TB-15 |
+| Data: city/country mismatch | Red | TB-18 |
+| Data: no item lines | Red | TB-19, TB-25 |
+| Data: duplicate Booking ID (case/space-insensitive) | Red | TB-25 (` tb-05 ` repeats TB-05) |
+| Notice: orphan item row | Notice | TB-99 |
+| Advisory: possible dangerous goods (ADR classes outside R-06) | Advisory | TB-21 (class 1), TB-22 (class 5.1); TB-23 look-alikes (none) |
+| Advisory: fewer pallets by weight | Advisory | TB-24 (4 → 2 pallets, saving £340); also TB-15 |
+| Price disclaimer | Display | every booking with a carrier |
+| HS existence, leading-zero and suggestion checks (change `add-hs-code-validation`) | Advisory / R-01 fix text | TB-02 (TSH-01 blank → suggestion; SCK-01 `6115` → heading hint), TB-15 (MUG-01 blank → suggestion), TB-16 (`090240` text keeps its zero). Codes that are not in the tariff (`999999`) and 9-digit number cells are unit-tested only; that change adds planted bookings for them. |

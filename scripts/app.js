@@ -106,7 +106,9 @@ function reportEl(ev, ctx) {
       h('div', { class: 'tablewrap' }, h('table', { class: 'ctable' },
         h('thead', null, h('tr', null, h('th', null, 'Service'), h('th', { class: 'num' }, `Cost (${rec.opts[0].pallets} plt)`), h('th', { class: 'num' }, 'Transit'), h('th', { class: 'num' }, 'On time'), h('th', { class: 'num' }, 'Max/pallet'), h('th', null, ''))),
         h('tbody', null, rows))),
-      rec.wpp != null ? h('p', { class: 'note' }, `Your load: ${PF.kg(b.gross)} on ${b.pallets} pallet${b.pallets === 1 ? '' : 's'} = ${PF.kg(rec.wpp)} per pallet.`) : null);
+      rec.wpp != null ? h('p', { class: 'note' }, `Your load: ${PF.kg(b.gross)} on ${b.pallets} pallet${b.pallets === 1 ? '' : 's'} = ${PF.kg(rec.wpp)} per pallet.`) : null,
+      h('p', { class: 'note' }, PF.PRICE_NOTE),
+      planEl(ev, ctx));
   }
 
   const conf = PF.confirmation(ev);
@@ -115,6 +117,7 @@ function reportEl(ev, ctx) {
     h('p', { class: 'conf-head s-' + status }, conf.head),
     conf.lines.map(l => h('p', null, l)),
     eta && (eta.movedCollect || eta.movedArrive || eta.fromToday) ? h('p', { class: 'note' }, [eta.fromToday ? 'Ready date is in the past, so timing is counted from today.' : null, eta.movedCollect ? 'Collection moved to the next working day.' : null, eta.movedArrive ? 'Arrival moved to the next working day (no weekend deliveries).' : null].filter(Boolean).join(' ')) : null,
+    h('p', { class: 'note' }, `Dates checked against today, ${PF.fmtDate(ev.today)} (this device’s date).`),
     h('h4', null, 'What happens next'),
     h('ol', { class: 'next' }, conf.next.map(n => h('li', null, n)))) : null;
 
@@ -126,6 +129,26 @@ function reportEl(ev, ctx) {
       h('tfoot', null, h('tr', null, h('td', { colspan: 6 }, 'Total of lines · declared on booking'), h('td', { class: 'num' }, lines.every(x => x != null) ? PF.gbp(lines.reduce((a, c2) => a + c2, 0)) : '—', h('br'), h('small', null, PF.gbp(b.declared))), h('td', { colspan: 2 })))))) : null;
 
   return h('div', { class: 'report' }, head, issueList, passedEl, adv, carrierEl, confEl, inv);
+}
+
+function planEl(ev, ctx) {
+  const p = ev.plan; if (!p) return null;
+  const cur = ev.b.pallets;
+  return h('div', { class: 'pallet-plan' },
+    h('h4', null, 'Pallet plan by weight'),
+    h('p', { class: 'note' }, `Planning weight ${PF.kg(p.weight)}${p.estimated ? ' — estimated from item weights (goods + 25 kg per pallet)' : ''}.`),
+    h('div', { class: 'tablewrap' }, h('table', { class: 'ctable' },
+      h('thead', null, h('tr', null, ['Service', 'Pallets', 'kg / pallet', 'Cost', ''].map((x, i) => h('th', { class: i > 0 && i < 4 ? 'num' : '' }, x)))),
+      h('tbody', null, p.perCarrier.map(r => {
+        const same = r.carrier === (ev.rec.chosen && ev.rec.chosen.carrier) && r.minPallets === cur;
+        return h('tr', { class: r.carrier === p.chosen ? 'chosen' : '' },
+          h('th', { scope: 'row' }, r.carrier, h('span', { class: 'svc' }, r.service)),
+          h('td', { class: 'num' }, String(r.minPallets)), h('td', { class: 'num' }, PF.kg(r.perPallet)), h('td', { class: 'num' }, PF.gbp(r.cost)),
+          h('td', null, same ? h('span', { class: 'tag' }, 'Current') : h('button', { class: 'btn tiny', type: 'button', onclick: () => ctx.apply({ patch: { pallets: r.minPallets, carrierOverride: r.carrier }, say: `make it ${r.minPallets} pallets${r.carrier !== ev.rec.chosen.carrier ? ' and use ' + r.carrier.toLowerCase() : ''}` }) }, `Use ${r.minPallets} pallet${r.minPallets === 1 ? '' : 's'} on ${r.carrier}`)));
+      })))),
+    p.split ? h('details', { class: 'split' }, h('summary', null, `Carton split for ${p.chosen} (${p.split.length} pallet${p.split.length === 1 ? '' : 's'})`),
+      h('ul', { class: 'plain' }, p.split.map(x => h('li', null, `Pallet ${x.pallet}: ${PF.kg(x.kg)} of goods — ${Object.entries(x.cartons).map(([k, v]) => `${v} × ${k}`).join(', ')}`)))) : (p.splitNote ? h('p', { class: 'note' }, p.splitNote) : null),
+    h('p', { class: 'note' }, 'Balances weight only — check volume and stacking height.'));
 }
 
 // ---------- CHAT ----------
@@ -178,7 +201,7 @@ function send(text) {
     const ev = PF.evaluate(C.toRaw(cs, cs.confirmed || 'CHAT'), { today: PF.todayISO() });
     if (reply.diff.length) parts.push(h('div', { class: 'got' }, h('p', { class: 'mini-h' }, 'Checks re-run'), h('ul', null, reply.diff.map(d => h('li', { class: 'd-' + d.to }, `${d.id} now ${STATUS_WORD[d.to]}`)))));
     if (reply.firstComplete) parts.push(h('p', null, 'That’s everything I need. Pre-flight result:'));
-    parts.push(miniVerdict(ev));
+    parts.push(miniVerdict(ev, reply.priceNote));
     if (reply.intent === 'confirm-blocked') parts.push(h('p', { class: 'note-warn' }, `I can’t confirm while there ${ev.reds === 1 ? 'is 1 red issue' : 'are ' + ev.reds + ' red issues'} — red means the shipment would be stopped. Fix ${ev.reds === 1 ? 'it' : 'them'} (the buttons in the report do most of it) and say “confirm” again.`));
     if (reply.intent === 'confirmed') parts.push(confCard(ev, reply.ref));
     if (reply.intent !== 'confirmed') chips = ev.status === 'Red' ? ['What’s wrong?'] : ['Confirm booking', 'What’s wrong?'];
@@ -193,7 +216,7 @@ function send(text) {
   if (chips) b.append(chipsEl(chips, 'live'));
   renderSheet();
 }
-function miniVerdict(ev) {
+function miniVerdict(ev, priceNote) {
   const bad = [...ev.dataIssues.map(d => ({ sev: d.sev, t: d.text })), ...ev.checks.filter(c => c.status === 'fail' || c.status === 'check').map(c => ({ sev: c.status === 'check' ? 'Amber' : c.sev, t: `${c.id}: ${c.detail}` }))].sort((a, z) => (a.sev === z.sev ? 0 : a.sev === 'Red' ? -1 : 1));
   return h('div', { class: 'mini v-' + ev.status },
     h('p', null, h('span', { class: 'ministamp' }, STAMP[ev.status]), ' ', VERDICT[ev.status]),
@@ -202,6 +225,7 @@ function miniVerdict(ev) {
     ev.rec ? (ev.rec.chosen.fits === false && ev.rec.fixes.length
       ? h('p', null, h('b', null, 'Carrier: '), `${PF.label(ev.rec.chosen)} can’t take ${PF.kg(ev.rec.wpp)} pallets. Recommended: ${ev.rec.fixes[0].text}`)
       : h('p', null, h('b', null, 'Carrier: '), `${PF.label(ev.rec.chosen)} — ${PF.gbp(ev.rec.chosen.cost)}, ${ev.rec.chosen.transit} days`, ev.eta ? `, arriving ${PF.fmtDateLong(ev.eta.arrive)}.` : '.')) : null,
+    ev.rec && priceNote ? h('p', { class: 'note' }, priceNote) : null,
     h('button', { class: 'linkbtn only-narrow', type: 'button', onclick: () => $('#sheet').scrollIntoView({ behavior: 'smooth' }) }, 'See the full report ↓'));
 }
 function confCard(ev, ref) {
@@ -344,7 +368,7 @@ finput.addEventListener('change', () => { if (finput.files.length) loadFiles([..
 ['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
 drop.addEventListener('drop', e => { if (e.dataTransfer.files.length) loadFiles([...e.dataTransfer.files]); });
 function sampleBuf() { const bin = atob(window.SAMPLE_XLSX_B64); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u.buffer; }
-$('#load-sample').addEventListener('click', () => { const wb = XLSX.read(sampleBuf(), { type: 'array' }); ingest(sheetsFromWorkbook(wb, 'Preflight_Test_Cases.xlsx'), 'Sample: Preflight_Test_Cases.xlsx (20 test bookings)'); });
+$('#load-sample').addEventListener('click', () => { const wb = XLSX.read(sampleBuf(), { type: 'array' }); ingest(sheetsFromWorkbook(wb, 'Preflight_Test_Cases.xlsx'), 'Sample: Preflight_Test_Cases.xlsx (25 test bookings)'); });
 $('#dl-sample').addEventListener('click', () => saveFile('Preflight_Test_Cases.xlsx', sampleBuf()));
 $('#skip-ex').addEventListener('change', () => { if (fileData) ingest(fileData.sheets, fileData.name); });
 
@@ -368,10 +392,12 @@ function renderRules() {
     h('thead', null, h('tr', null, h('th', null, 'Rule'), h('th', null, 'Severity'), h('th', null, 'How Preflight checks it'))),
     h('tbody', null, Object.entries(PF.RULES).map(([id, r]) => h('tr', null, h('td', null, h('b', null, id), ' ', r.text), h('td', null, h('span', { class: 'pill p-' + r.sev }, r.sev)), h('td', null, how[id])))))));
   R.append(h('h3', null, 'Also checked (data quality)'),
+    h('p', null, 'Possible dangerous goods outside R-06 (ADR classes 1–9: fireworks, gas cartridges, matches, charcoal, pool chlorine, pesticides, car batteries, drain cleaner, dry ice, airbags…) are shown as an Advisory with the ADR class, typical UN numbers and the exemption that would make the item unregulated. An Advisory never changes Red/Amber/Green — only the ten rules above do.'),
     h('p', null, 'Missing or non-numeric required fields, zero or fractional counts, a destination city that doesn’t match its country, cities or countries with no carrier route, currency other than GBP, bookings with no items, duplicate Booking IDs, item rows pointing at unknown bookings, and duplicate SKUs. These are listed as “Data” issues alongside the rulebook results.'));
   R.append(h('h3', null, 'Carrier options (fixed rate card)'), h('div', { class: 'tablewrap' }, h('table', { class: 'ctable' },
     h('thead', null, h('tr', null, ['Carrier', 'Service', 'Route', 'Per pallet', 'Transit', 'On time', 'Max/pallet'].map((x, i) => h('th', { class: i > 2 ? 'num' : '' }, x)))),
     h('tbody', null, PF.CARRIERS.map(c => h('tr', null, h('td', null, c.carrier), h('td', null, c.service), h('td', null, 'UK → ' + c.dest), h('td', { class: 'num' }, PF.gbp(c.price)), h('td', { class: 'num' }, c.transit + ' days'), h('td', { class: 'num' }, c.onTime + '%'), h('td', { class: 'num' }, c.maxW + ' kg')))))));
+  R.append(h('p', { class: 'note' }, PF.PRICE_NOTE));
   R.append(h('h3', null, 'How the carrier is recommended'),
     h('ul', { class: 'plain' },
       h('li', null, h('b', null, 'Cheapest: '), 'lowest total cost (price per pallet × pallets); ties go to the faster service.'),
@@ -395,7 +421,7 @@ function renderTests() {
   const ok = res.filter(r => r.pass).length;
   const T = $('#tests-body'); T.innerHTML = '';
   T.append(h('div', { class: 'tests-head' }, h('p', { class: 'big ' + (ok === res.length ? 'ok' : 'bad') }, `${ok} / ${res.length}`), h('p', null, `automated test cases pass, run live in your browser against the same engine the app uses (with today fixed to 25-10-2026 so date tests are stable).`)));
-  T.append(h('p', null, 'For an end-to-end test, the sample workbook has 20 bookings in the exact judges’ format, each planting one or more mistakes, plus an “Expected results” sheet. ', h('button', { class: 'linkbtn', type: 'button', onclick: () => { showTab('file'); $('#load-sample').click(); } }, 'Run it on the file tab'), '.'));
+  T.append(h('p', null, 'For an end-to-end test, the sample workbook has 25 bookings in the exact judges’ format, each planting one or more mistakes, plus an “Expected results” sheet. ', h('button', { class: 'linkbtn', type: 'button', onclick: () => { showTab('file'); $('#load-sample').click(); } }, 'Run it on the file tab'), '.'));
   const groups = [...new Set(res.map(r => r.group))];
   groups.forEach(g => {
     const rs = res.filter(r => r.group === g); const gok = rs.filter(r => r.pass).length;
