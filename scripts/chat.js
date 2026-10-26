@@ -160,7 +160,10 @@ function parseMessage(text, st, today) {
   }
   // Which item does free-floating detail belong to?
   const nameIdx = itemByName(items, raw.replace(/\d/g, ' '));
-  const focusRef = nameIdx != null ? nameIdx : (st.pending && st.pending.item != null ? st.pending.item : (items.length ? (st.lastItem ?? items.length - 1) : null));
+  // An HS answer that names no item belongs to the one item still without a code, not to the last item mentioned.
+  const hsAnswer = /\b(?:use|accept|go with)\s+(?:the\s+)?(?:suggested\s+)?(?:code\s+)?\d{6,10}\b|\b(?:hs|commodity|tariff)\s*(?:code|no\.?|number)?\b/i.test(raw);
+  const noHs = items.map((x, i) => (!x.hs ? i : null)).filter(i => i != null);
+  const focusRef = nameIdx != null ? nameIdx : (hsAnswer && noHs.length === 1 ? noHs[0] : (st.pending && st.pending.item != null ? st.pending.item : (items.length ? (st.lastItem ?? items.length - 1) : null)));
   const zones = segs.length ? [{ ref: null, start: 0, end: segs[0].start }, ...segs.map((sg, i) => ({ ref: i, start: sg.start, end: sg.end }))] : [{ ref: null, start: 0, end: S.w.length }];
   const looseNew = pending.find(p => p.ref === 'new' && !p.seg);
   const target = z => (z.ref != null ? pending[z.ref] : looseNew && focusRef == null ? looseNew : (focusRef != null ? (pending.find(p => p.ref === focusRef) || (pending.push({ ref: focusRef, fields: {} }), pending[pending.length - 1])) : null));
@@ -183,7 +186,7 @@ function parseMessage(text, st, today) {
     takeAll(sub, new RegExp(`\\bunit weight\\s*(?:is|of|:|=)?\\s*${UW}?`, 'i'), m => { if (m[1]) set('unitWeight', toKg(num(m[1]), m[2] || 'kg')); });
     takeAll(sub, new RegExp(`\\bweigh(?:s|ing)?\\s*(?:about|around|~)?\\s*${UW}\\s*(?:each|apiece|a piece)?`, 'i'), m => { const v = toKg(num(m[1]), m[2]); if (v < 30 || /each|apiece|piece/i.test(m[0])) set('unitWeight', v); else return false; });
     takeAll(sub, /\b(?:use|accept|go with)\s+(?:the\s+)?(?:suggested\s+)?(?:code\s+)?(\d{6,10})\b/i, m => set('hs', m[1]));
-    takeAll(sub, /\b(?:hs|h\.s\.|commodity|tariff)\s*(?:code|no\.?|number)?\s*(?:is|:|=|#|of)?\s*(\d[\d .]{2,14}\d|\d{3,})/i, m => set('hs', m[1].replace(/[ .]/g, '')));
+    takeAll(sub, /\b(?:hs|h\.s\.|commodity|tariff)\s*(?:code|no\.?|number)?\s*(?:for\s+(?:the\s+)?[a-z][a-z \-]{0,40}?\s+)?(?:is|:|=|#|of)?\s*(\d[\d .]{2,14}\d|\d{3,})/i, m => set('hs', m[1].replace(/[ .]/g, '')));
     takeAll(sub, /\b(?:made|manufactured|produced|built|sourced|originat(?:es|ing)?|grown|assembled)\s+(?:in|from)\s+(?:the\s+)?([a-z][a-z'.]*(?:\s+[a-z][a-z'.]*){0,3})/i, m => { const c = countryIn(m[1]); if (c) set('coo', c); else return false; });
     takeAll(sub, /\b(?:country of origin|coo|origin)\s*(?:is|:|=|-)?\s*(?:the\s+)?([a-z][a-z'.]*(?:\s+[a-z][a-z'.]*){0,3})/i, m => { const c = countryIn(m[1]); if (c) set('coo', c); else return false; });
     takeAll(sub, /(?:\bat\b|@|\bcosting\b|\bpriced at\b|\bunit price\s*(?:is|of|:|=)?|\bprice\s*(?:is|of|:|=)?|\bcosts?\b|\bfor\b)\s*£\s*(\d+(?:\.\d+)?)(?![\d]|,\d)/i, m => set('price', num(m[1])));

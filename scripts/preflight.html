@@ -2115,7 +2115,10 @@ function parseMessage(text, st, today) {
   }
   // Which item does free-floating detail belong to?
   const nameIdx = itemByName(items, raw.replace(/\d/g, ' '));
-  const focusRef = nameIdx != null ? nameIdx : (st.pending && st.pending.item != null ? st.pending.item : (items.length ? (st.lastItem ?? items.length - 1) : null));
+  // An HS answer that names no item belongs to the one item still without a code, not to the last item mentioned.
+  const hsAnswer = /\b(?:use|accept|go with)\s+(?:the\s+)?(?:suggested\s+)?(?:code\s+)?\d{6,10}\b|\b(?:hs|commodity|tariff)\s*(?:code|no\.?|number)?\b/i.test(raw);
+  const noHs = items.map((x, i) => (!x.hs ? i : null)).filter(i => i != null);
+  const focusRef = nameIdx != null ? nameIdx : (hsAnswer && noHs.length === 1 ? noHs[0] : (st.pending && st.pending.item != null ? st.pending.item : (items.length ? (st.lastItem ?? items.length - 1) : null)));
   const zones = segs.length ? [{ ref: null, start: 0, end: segs[0].start }, ...segs.map((sg, i) => ({ ref: i, start: sg.start, end: sg.end }))] : [{ ref: null, start: 0, end: S.w.length }];
   const looseNew = pending.find(p => p.ref === 'new' && !p.seg);
   const target = z => (z.ref != null ? pending[z.ref] : looseNew && focusRef == null ? looseNew : (focusRef != null ? (pending.find(p => p.ref === focusRef) || (pending.push({ ref: focusRef, fields: {} }), pending[pending.length - 1])) : null));
@@ -2138,7 +2141,7 @@ function parseMessage(text, st, today) {
     takeAll(sub, new RegExp(`\\bunit weight\\s*(?:is|of|:|=)?\\s*${UW}?`, 'i'), m => { if (m[1]) set('unitWeight', toKg(num(m[1]), m[2] || 'kg')); });
     takeAll(sub, new RegExp(`\\bweigh(?:s|ing)?\\s*(?:about|around|~)?\\s*${UW}\\s*(?:each|apiece|a piece)?`, 'i'), m => { const v = toKg(num(m[1]), m[2]); if (v < 30 || /each|apiece|piece/i.test(m[0])) set('unitWeight', v); else return false; });
     takeAll(sub, /\b(?:use|accept|go with)\s+(?:the\s+)?(?:suggested\s+)?(?:code\s+)?(\d{6,10})\b/i, m => set('hs', m[1]));
-    takeAll(sub, /\b(?:hs|h\.s\.|commodity|tariff)\s*(?:code|no\.?|number)?\s*(?:is|:|=|#|of)?\s*(\d[\d .]{2,14}\d|\d{3,})/i, m => set('hs', m[1].replace(/[ .]/g, '')));
+    takeAll(sub, /\b(?:hs|h\.s\.|commodity|tariff)\s*(?:code|no\.?|number)?\s*(?:for\s+(?:the\s+)?[a-z][a-z \-]{0,40}?\s+)?(?:is|:|=|#|of)?\s*(\d[\d .]{2,14}\d|\d{3,})/i, m => set('hs', m[1].replace(/[ .]/g, '')));
     takeAll(sub, /\b(?:made|manufactured|produced|built|sourced|originat(?:es|ing)?|grown|assembled)\s+(?:in|from)\s+(?:the\s+)?([a-z][a-z'.]*(?:\s+[a-z][a-z'.]*){0,3})/i, m => { const c = countryIn(m[1]); if (c) set('coo', c); else return false; });
     takeAll(sub, /\b(?:country of origin|coo|origin)\s*(?:is|:|=|-)?\s*(?:the\s+)?([a-z][a-z'.]*(?:\s+[a-z][a-z'.]*){0,3})/i, m => { const c = countryIn(m[1]); if (c) set('coo', c); else return false; });
     takeAll(sub, /(?:\bat\b|@|\bcosting\b|\bpriced at\b|\bunit price\s*(?:is|of|:|=)?|\bprice\s*(?:is|of|:|=)?|\bcosts?\b|\bfor\b)\s*£\s*(\d+(?:\.\d+)?)(?![\d]|,\d)/i, m => set('price', num(m[1])));
@@ -2712,6 +2715,10 @@ function runTests(PF, CHAT) {
     T('Conversation', 'HS: “Other” material → 610990, not the cotton code; “not sure” → asked once, then the plain HS question', () => { const o = talk([TEE, 'other']), n = talk([TEE, 'not sure']); return expect(/610990/.test(o.r.ask) && !/610910/.test(o.r.ask) && !/made of/.test(n.r.ask) && /HS code/.test(n.r.ask), o.r.ask + ' | ' + n.r.ask); });
     T('Conversation', 'HS: material in the description → no material question', () => expect(!/made of/.test(talk(['200 cotton t-shirts to Berlin from Leeds, £6 each, 20 per carton, 0.2 kg each, made in Turkey']).r.ask)));
     T('Conversation', 'Price disclaimer on the first priced reply only', () => { let s = CHAT.newState(); const r1 = CHAT.turn(s, FULL, TODAY); const r2 = CHAT.turn(r1.st, 'Actually, add a pallet', TODAY); return expect(/Indicative rate/.test(r1.reply.priceNote || '') && !r2.reply.priceNote, [r1.reply.priceNote, r2.reply.priceNote]); });
+    const TWO = "Hi, Priya from Northfield Goods. 2 pallets from Manchester to our Berlin warehouse, ready 5 Nov, fastest please. 1200 ceramic mugs at £5 each, 12 per carton, 0.4kg each, made in the UK. 240 power banks at £12 each, 12 per carton, 0.3kg each, made in China, HS 850760. Total weight 960kg. No slot booked yet.";
+    T('Conversation', 'After “don’t know”, the button text “HS code for ceramic mugs is 691200” sets the mugs’ code', () => { const { s } = talk([TWO, "don't know", 'HS code for ceramic mugs is 691200']); return expect(s.booking.items[0].hs === '691200' && s.booking.items[1].hs === '850760', [s.booking.items[0].hs, s.booking.items[1].hs]); });
+    T('Conversation', '“use 691200” goes to the item that has no HS code, not the last item mentioned', () => { const { s } = talk([TWO, "don't know", 'use 691200']); return expect(s.booking.items[0].hs === '691200' && s.booking.items[1].hs === '850760', [s.booking.items[0].hs, s.booking.items[1].hs]); });
+    T('Conversation', '“the HS code for the mugs is 691200” names the item', () => { const { s } = talk([TWO, "don't know", 'the HS code for the mugs is 691200']); return expect(s.booking.items[0].hs === '691200', s.booking.items[0].hs); });
     T('Conversation', 'Everything in one message → complete booking, Green, nothing asked', () => { const { s, r, ev: e } = talk([FULL]); return expect(s.complete && !r.ask && e.status === 'Green' && s.booking.seller === 'Northfield Goods', `${s.booking.seller} / ${r.ask} / ${e && e.status}`); });
     T('Conversation', 'Cartons (90) and declared value (£5,400) are worked out, not asked', () => { const { s } = talk([FULL]); const raw = CHAT.toRaw(s); return expect(raw.cartons === 90 && raw.declared === 5400, `${raw.cartons} ${raw.declared}`); });
     T('Conversation', '“add a pallet” → 4 pallets, checks re-run', () => { const { s, r } = talk([FULL, 'Actually, add a pallet']); return expect(s.booking.pallets === 4 && r.changes.some(c => c.field === 'pallets') && r.showReport, s.booking.pallets); });
@@ -3534,7 +3541,7 @@ function renderFile() {
   const cnt = s => rows.filter(r => r.ev.status === s).length;
   out.append(h('div', { class: 'file-head' },
     h('div', null, h('h2', null, `${rows.length} booking${rows.length === 1 ? '' : 's'} checked`), h('p', { class: 'muted' }, fileData.name)),
-    h('div', { class: 'filters', role: 'group', 'aria-label': 'Filter by status' }, ['All', 'Red', 'Amber', 'Green', 'Review', 'Advisory'].map(s => h('button', { type: 'button', class: 'fbtn f-' + s, 'aria-pressed': String(filter === s), onclick: () => { filter = s; renderFile(); } }, `${({ All: 'All', Red: 'Must fix', Amber: 'Check', Green: 'Ready', Review: 'To check', Advisory: 'Good to know' })[s]} ${s === 'All' ? rows.length : s === 'Review' ? rows.filter(r => toReview(r)).length : s === 'Advisory' ? rows.filter(r => r.ev.advisories.length).length : cnt(s)}`))),
+    h('div', { class: 'filters', role: 'group', 'aria-label': 'Filter by status' }, ['All', 'Red', 'Amber', 'Green', 'Review', 'Advisory'].map(s => h('button', { type: 'button', class: 'fbtn f-' + s, 'aria-pressed': String(filter === s), onclick: () => { filter = s; renderFile(); } }, `${({ All: 'All', Red: 'Must fix', Amber: 'Check', Green: 'Ready', Review: 'To check', Advisory: 'Good to know' })[s]} ${s === 'All' ? rows.length : s === 'Review' ? rows.filter(r => toReview(r)).length : s === 'Advisory' ? rows.filter(r => r.ev.advisories.length + (r.ev.warnings || []).length).length : cnt(s)}`))),
     h('button', { class: 'btn', type: 'button', onclick: exportResults, disabled: !rows.length }, 'Export results (.xlsx)')));
   fileData.notices.forEach(n => out.append(h('p', { class: 'notice n-' + n.level }, n.text)));
   if (!rows.length) { out.append(h('p', { class: 'note-warn' }, 'No bookings found under the header row.')); return; }
@@ -3552,7 +3559,7 @@ function renderFile() {
       h('td', null, b.seller || '—'),
       h('td', null, `${b.originCity || '?'} → ${b.destCity || '?'}`),
       h('td', null, h('span', { class: 'pill p-' + ev.status }, ({ Red: 'Must fix', Amber: 'Check', Green: 'Ready' })[ev.status])),
-      h('td', null, flagged.length ? flagged.map(f => h('span', { class: 'rchip s-' + f.s }, f.t)) : h('span', { class: 'muted' }, 'none'), ev.warnings.length ? h('span', { class: 'rchip s-Warn', title: ev.warnings.map(w => `${w.title}: ${w.sku}`).join('\n') }, warnIcon(), ` ${ev.warnings.length}`) : null, ev.advisories.length ? h('span', { class: 'rchip s-Adv', title: 'Doesn’t block the booking' }, 'Good to know') : null),
+      h('td', null, flagged.length ? flagged.map(f => h('span', { class: 'rchip s-' + f.s }, f.t)) : h('span', { class: 'muted' }, 'none'), ev.warnings.length ? h('span', { class: 'rchip s-Warn', title: ev.warnings.map(w => `${w.title}: ${w.sku}`).join('\n') }, warnIcon(), ` ${ev.warnings.length}`) : null, ev.advisories.length + (ev.warnings || []).length ? h('span', { class: 'rchip s-Adv', title: 'Doesn’t block the booking' }, 'Good to know') : null),
       h('td', null, !ev.rec ? '—' : ev.rec.chosen.fits === false && ev.rec.fixes.length ? h('span', null, h('s', { class: 'muted' }, ev.rec.chosen.carrier), ' → ', `${ev.rec.fixes[0].carrier}${ev.rec.fixes[0].type === 'repack' ? ` on ${ev.rec.fixes[0].pallets} plt` : ''} · ${PF.gbp(ev.rec.fixes[0].cost)}`) : `${ev.rec.chosen.carrier} · ${PF.gbp(ev.rec.chosen.cost)}`),
       h('td', { class: 'num' }, toReview(r) || ''),
       exp ? h('td', null, e ? h('span', { class: String(e.status).toLowerCase() === ev.status.toLowerCase() ? 'match' : 'mismatch', title: e.rules || '' }, String(e.status).toLowerCase() === ev.status.toLowerCase() ? `✓ ${e.status}` : `✕ expected ${e.status}`) : '—') : null);
