@@ -685,8 +685,9 @@ footer { max-width: 1320px; margin: 0 auto; padding: 0 24px 40px; color: var(--d
       </label>
       <div class="side">
         <h2>No file handy?</h2>
-        <p>Run the 25 built-in test bookings — each one plants a mistake from the rulebook, with an expected result to compare against.</p>
-        <div class="row"><button id="load-sample" class="btn" type="button">Check the sample file</button><button id="dl-sample" class="btn ghost" type="button">Download it</button></div>
+        <p>Try 12 demo bookings from real-looking sellers across every route. Most are ready to go, and a few show what Preflight catches and how to fix it in one click.</p>
+        <div class="row"><button id="load-demo" class="btn" type="button">Load demo bookings</button><button id="load-sample" class="btn ghost" type="button">Run the 25 test bookings</button></div>
+        <p class="note">Download the <button id="dl-demo" class="linkbtn" type="button">demo file</button> or the <button id="dl-sample" class="linkbtn" type="button">test file</button>.</p>
         <label class="check"><input id="skip-ex" type="checkbox" checked> <span>Skip the grey template example row (BK-001 · Northfield Goods)</span></label>
       </div>
     </div>
@@ -704,6 +705,7 @@ footer { max-width: 1320px; margin: 0 auto; padding: 0 24px 40px; color: var(--d
 <div id="mbar" class="mbar" aria-live="polite"></div>
 <footer>Checks run in your browser against today’s date (<span id="today"></span>). Nothing you type or upload leaves this page.</footer>
 <script>window.SAMPLE_XLSX_B64 = "{{SAMPLE}}";</script>
+<script>window.DEMO_XLSX_B64 = "{{DEMO}}";</script>
 <script>window.HS_INDEX = {{HSINDEX}};</script>
 <script>{{ENGINE}}</script>
 <script>{{CHAT}}</script>

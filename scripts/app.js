@@ -133,8 +133,23 @@ function setHero(tab, ev, label) {
   const cur = location.hash.slice(1) || 'chat';
   if (cur === tab || (tab === 'chat' && cur !== 'file')) renderHero(heroFor[tab]);
 }
+// Example booking for the hero until the user has one of their own (first demo booking, a clean London → Berlin run).
+let demoHeroCache;
+function demoHero() {
+  if (demoHeroCache !== undefined) return demoHeroCache;
+  demoHeroCache = null;
+  try {
+    if (window.DEMO_XLSX_B64 && window.XLSX) {
+      const wb = XLSX.read(demoBuf(), { type: 'array' });
+      const b = PF.parseSheets(sheetsFromWorkbook(wb, 'demo')).bookings[0];
+      if (b) { const ev = PF.evaluate(b, { today: PF.todayISO() }); demoHeroCache = { ev, label: `Example · ${ev.b.seller}`, example: true }; }
+    }
+  } catch (e) { demoHeroCache = null; }
+  return demoHeroCache;
+}
 function renderHero(x) {
   const box = $('#hero-map'); if (!box) return;
+  if (!x) x = demoHero();
   const ev = x && x.ev, b = ev && ev.b, rec = ev && ev.rec;
   const o = b && CITY_XY[b.originCity], d = b && CITY_XY[b.destCity];
   const from = o ? b.originCity : 'Manchester', oxy = CITY_XY[from];
@@ -159,7 +174,7 @@ function renderHero(x) {
   }
   const card = h('div', { class: 'hcheck' },
     h('div', { class: 'hd' }, h('b', { style: 'font-weight:500' }, ev ? `${x.label}${PF.isNum(b.pallets) ? ` · ${PF.fmtNum(b.pallets)} pallet${b.pallets === 1 ? '' : 's'}` : ''}` : 'Your booking'),
-      ev ? h('span', null, h('span', { class: 'live-l' }, 'live'), ' ', h('span', { class: 'ministamp v-' + ev.status }, STAMP[ev.status])) : h('span', { class: 'mono muted' }, 'waiting')),
+      ev ? h('span', null, h('span', { class: 'live-l' }, x.example ? 'example' : 'live'), ' ', h('span', { class: 'ministamp v-' + ev.status }, STAMP[ev.status])) : h('span', { class: 'mono muted' }, 'waiting')),
     h('div', { class: 'ring' }, h('div', { html: `<svg viewBox="0 0 56 56" aria-hidden="true"><circle class="bgc" cx="28" cy="28" r="24"/><circle class="fg" cx="28" cy="28" r="24" style="stroke-dashoffset:${(150.8 * (1 - passed / 10)).toFixed(1)}"/></svg>` }),
       h('div', null, h('b', { class: 'num' }, `${passed} / 10`), h('span', null, 'checks passed'))),
     chips.length ? h('div', { class: 'hchips' }, chips) : null,
@@ -803,7 +818,7 @@ function renderFile() {
       h('td', null, b.seller || '—'),
       h('td', null, `${b.originCity || '?'} → ${b.destCity || '?'}`),
       h('td', null, h('span', { class: 'pill p-' + ev.status }, ({ Red: 'Must fix', Amber: 'Check', Green: 'Ready' })[ev.status])),
-      h('td', null, flagged.length ? flagged.map(f => h('span', { class: 'rchip s-' + f.s }, f.t)) : h('span', { class: 'muted' }, 'none'), ev.warnings.length ? h('span', { class: 'rchip s-Warn', title: ev.warnings.map(w => `${w.title}: ${w.sku}`).join('\n') }, warnIcon(), ` ${ev.warnings.length}`) : null, ev.advisories.length + (ev.warnings || []).length ? h('span', { class: 'rchip s-Adv', title: 'Doesn’t block the booking' }, 'Good to know') : null),
+      h('td', null, flagged.length ? flagged.map(f => h('span', { class: 'rchip s-' + f.s }, f.t)) : (ev.advisories.length + (ev.warnings || []).length ? null : h('span', { class: 'muted' }, 'none')), ev.warnings.length ? h('span', { class: 'rchip s-Warn', title: ev.warnings.map(w => `${w.title}: ${w.sku}`).join('\n') }, warnIcon(), ` ${ev.warnings.length}`) : null, ev.advisories.length + (ev.warnings || []).length ? h('span', { class: 'rchip s-Adv', title: 'Doesn’t block the booking' }, 'Good to know') : null),
       h('td', null, !ev.rec ? '—' : ev.rec.chosen.fits === false && ev.rec.fixes.length ? h('span', null, h('s', { class: 'muted' }, ev.rec.chosen.carrier), ' → ', `${ev.rec.fixes[0].carrier}${ev.rec.fixes[0].type === 'repack' ? ` on ${ev.rec.fixes[0].pallets} plt` : ''} · ${PF.gbp(ev.rec.fixes[0].cost)}`) : `${ev.rec.chosen.carrier} · ${PF.gbp(ev.rec.chosen.cost)}`),
       h('td', { class: 'num' }, toReview(r) || ''),
       exp ? h('td', null, e ? h('span', { class: String(e.status).toLowerCase() === ev.status.toLowerCase() ? 'match' : 'mismatch', title: e.rules || '' }, String(e.status).toLowerCase() === ev.status.toLowerCase() ? `✓ ${e.status}` : `✕ expected ${e.status}`) : '—') : null);
@@ -852,6 +867,9 @@ drop.addEventListener('drop', e => { if (e.dataTransfer.files.length) loadFiles(
 function sampleBuf() { const bin = atob(window.SAMPLE_XLSX_B64); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u.buffer; }
 $('#load-sample').addEventListener('click', () => { const wb = XLSX.read(sampleBuf(), { type: 'array' }); ingest(sheetsFromWorkbook(wb, 'Preflight_Test_Cases.xlsx'), 'Sample: Preflight_Test_Cases.xlsx (25 test bookings)'); });
 $('#dl-sample').addEventListener('click', () => saveFile('Preflight_Test_Cases.xlsx', sampleBuf()));
+function demoBuf() { const bin = atob(window.DEMO_XLSX_B64 || ''); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u.buffer; }
+$('#load-demo').addEventListener('click', () => { const wb = XLSX.read(demoBuf(), { type: 'array' }); ingest(sheetsFromWorkbook(wb, 'Preflight_Demo_Bookings.xlsx'), 'Demo: 12 bookings across every route'); });
+$('#dl-demo').addEventListener('click', () => saveFile('Preflight_Demo_Bookings.xlsx', demoBuf()));
 $('#skip-ex').addEventListener('change', () => { if (fileData) ingest(fileData.sheets, fileData.name); });
 
 // ---------- RULES ----------
