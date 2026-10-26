@@ -441,6 +441,86 @@ ul.plain { padding-left: 20px; } ul.plain li { margin-bottom: 4px; }
 .tgroup li small { display: block; }
 footer { max-width: 1320px; margin: 0 auto; padding: 0 24px 40px; color: var(--dim); font-size: 13px; }
 
+/* Top-bar section links (replace the tab strip) */
+.bar .links { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+.bar .links::-webkit-scrollbar { display: none; }
+.bar .links button { background: none; border: 0; padding: 7px 14px; border-radius: 999px; font-size: 14px; color: var(--muted); cursor: pointer; white-space: nowrap; }
+.bar .links button:hover { color: var(--ink); }
+.bar .links button[aria-selected="true"] { color: var(--route-ink); background: linear-gradient(90deg, var(--route), #A6E9FF); font-weight: 500; }
+.brand { grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr); align-items: center; }
+.brand .lanes { justify-content: flex-start; margin-top: 18px; }
+/* Hero route map + live check card */
+.hmap { position: relative; min-width: 0; }
+.hmap svg { width: 100%; height: auto; display: block; max-width: 100%; }
+.hmap .lane { fill: none; stroke: rgba(255,255,255,.12); stroke-width: 1.2; stroke-dasharray: 3 5; }
+.hmap .live { fill: none; stroke: url(#gHero); stroke-width: 2.6; stroke-linecap: round; stroke-dasharray: var(--len); stroke-dashoffset: var(--len); animation: draw 2s var(--ease) .2s forwards; }
+.hmap .live.red { stroke: var(--red); }
+.hmap .city circle { fill: var(--muted); } .hmap .city.on circle.core { fill: var(--ink); }
+.hmap .city text { font: 11px var(--mono); fill: var(--dim); letter-spacing: .06em; } .hmap .city.on text { fill: var(--ink); }
+.hmap .halo { fill: var(--route); opacity: .18; transform-origin: center; transform-box: fill-box; animation: pulse 2.8s var(--ease) infinite; }
+.hcheck { position: absolute; right: 0; bottom: -6px; width: min(330px, 80%); padding: 16px; border-radius: 18px; background: rgba(11,18,36,.72); border: 1px solid var(--line); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.hcheck .hd { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 14px; }
+.hcheck .ring { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
+.hcheck .ring svg { width: 54px; height: 54px; transform: rotate(-90deg); flex: none; }
+.hcheck .ring .bgc { fill: none; stroke: var(--edge-2); stroke-width: 5; }
+.hcheck .ring .fg { fill: none; stroke: var(--route); stroke-width: 5; stroke-linecap: round; stroke-dasharray: 150.8; animation: ringin .9s var(--ease); }
+@keyframes ringin { from { stroke-dashoffset: 150.8; } }
+.hcheck .ring b { display: block; font-size: 20px; font-weight: 500; }
+.hcheck .ring span { font-size: 12.5px; color: var(--muted); }
+.hchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.hchip { font: 11px var(--mono); padding: 3px 9px; border-radius: 999px; border: 1px solid; animation: rise .5s var(--ease) both; }
+.hchip.red { color: var(--red); border-color: rgba(255,92,122,.4); background: var(--red-tint); }
+.hchip.amber { color: var(--amber); border-color: rgba(255,181,71,.4); background: var(--amber-tint); }
+.hchip.ok { color: var(--green); border-color: rgba(75,227,164,.4); background: var(--green-tint); }
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+.hcheck .rec { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+.hcheck .rec b { color: var(--ink); font-weight: 500; }
+/* Section heads inside the report */
+.sec-h { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 20px 0 10px; }
+.sec-h h3 { font-size: 16px; }
+.tally { display: flex; gap: 8px; flex-wrap: wrap; }
+.tally span { font: 12px var(--mono); padding: 4px 11px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.tally b { color: var(--ink); font-weight: 500; }
+/* Carrier cards + priority toggle */
+.seg { display: flex; flex-wrap: wrap; gap: 2px; padding: 4px; border-radius: 999px; background: var(--glass); border: 1px solid var(--line); width: max-content; max-width: 100%; margin: 4px 0 14px; }
+.seg button { background: none; border: 0; padding: 7px 14px; border-radius: 999px; font-size: 13.5px; color: var(--muted); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: linear-gradient(90deg, var(--route), #A6E9FF); color: var(--route-ink); font-weight: 500; }
+.ccards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.ccard { position: relative; padding: 18px; border-radius: 16px; background: var(--glass); border: 1px solid var(--line); transition: transform .45s var(--ease), border-color .35s, box-shadow .35s; }
+.ccard.chosen { border-color: rgba(79,209,255,.5); box-shadow: 0 30px 60px -30px rgba(79,209,255,.45); transform: translateY(-4px); }
+.ccard .badge { position: absolute; top: 14px; right: 14px; font: 10.5px var(--mono); padding: 3px 9px; border-radius: 999px; background: var(--route); color: var(--route-ink); }
+.ccard h4 { font-size: 19px; }
+.ccard .svc { font-size: 13px; }
+.ccard dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0 12px; }
+.ccard dt { font: 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+.ccard dd { margin: 0; font-size: 16px; font-variant-numeric: tabular-nums; }
+.meter { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.meter i { display: block; height: 100%; border-radius: inherit; background: var(--green); transition: width 1s var(--ease); }
+.meter.no i { background: var(--red); }
+.fit { margin: 8px 0 0; font: 11.5px var(--mono); } .fit.ok { color: var(--green); } .fit.no { color: var(--red); }
+.ccard .pick { margin-top: 12px; }
+.chosen-l { color: var(--route); }
+.why-line { margin-top: 14px; color: var(--muted); max-width: 70ch; }
+.why-line b { color: var(--ink); font-weight: 500; }
+/* How it works */
+.steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.step { padding: 22px; border-radius: 16px; background: var(--glass); border: 1px solid var(--line); }
+.step .n { width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; font: 13px var(--mono); color: var(--route); background: var(--route-tint); border: 1px solid rgba(79,209,255,.25); }
+.step h4 { font-size: 18px; margin: 18px 0 6px; }
+.step p { color: var(--muted); font-size: 14.5px; margin: 0; }
+@media (max-width: 980px) {
+  .brand { grid-template-columns: 1fr; }
+  .ccards, .steps { grid-template-columns: 1fr; }
+  .ccard.chosen { transform: none; }
+}
+@media (max-width: 620px) {
+  .bar { flex-wrap: wrap; border-radius: 22px; }
+  .hcheck { position: relative; width: 100%; right: auto; bottom: auto; margin-top: 12px; }
+  .hmap > div:first-child { display: none; }
+  .bar .links button { padding: 6px 10px; font-size: 13px; }
+  .bar { padding: 8px 8px 8px 14px; }
+}
+
 /* Mobile sticky summary (chat booking) */
 .mbar { display: none; }
 @media (max-width: 980px) {
@@ -464,7 +544,6 @@ footer { max-width: 1320px; margin: 0 auto; padding: 0 24px 40px; color: var(--d
   .brand { padding-top: 18px; } .brand p { display: none; }
   .sheet { padding: 14px; }
   .issues, .advlist { grid-template-columns: 1fr; }
-  .bar > .mono { display: none; }
   .rvtable thead { display: none; }
   .rvtable, .rvtable tbody { display: block; }
   .rvtable tr { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; padding: 10px 0; border-bottom: 1px solid var(--line-2); }
@@ -492,28 +571,20 @@ footer { max-width: 1320px; margin: 0 auto; padding: 0 24px 40px; color: var(--d
   <div class="top-inner">
     <div class="bar">
       <a class="logo" href="#chat"><i aria-hidden="true"></i>Preflight</a>
-      <span class="mono muted">UK → DE · FR · NL pallet freight</span>
+      <nav class="links" role="tablist" aria-label="Sections">
+        <button id="tab-chat" role="tab" aria-controls="panel-chat">Book a shipment</button>
+        <button id="tab-file" role="tab" aria-controls="panel-file">Check a file</button>
+        <button id="tab-rules" role="tab" aria-controls="panel-rules">How it works</button>
+      </nav>
     </div>
     <div class="brand">
       <div>
         <div class="eyebrow">UK → Germany · France · Netherlands</div>
         <h1>Clear the route <span>before</span> the truck rolls.</h1>
-        <p>Book a pallet shipment in plain words or drop in your booking sheet. Every booking is checked against ten freight rules, with a fix for each problem and a carrier for your priority.</p>
+        <p>Tell us about your shipment or drop in your booking sheet. We check it straight away, show you how to fix anything that's wrong, and find the right carrier.</p>
+        <div class="lanes"><span>3 destinations</span><span>3 carriers</span><span>4 collection cities</span></div>
       </div>
-      <div class="lanes"><span>3 destinations</span><span>3 carriers</span><span>4 origin hubs</span></div>
-    </div>
-    <nav class="tabs" role="tablist" aria-label="Sections">
-      <button id="tab-chat" role="tab" aria-controls="panel-chat">Book by chat</button>
-      <button id="tab-file" role="tab" aria-controls="panel-file">Check a file</button>
-      <button id="tab-rules" role="tab" aria-controls="panel-rules">Rules &amp; carriers</button>
-      <button id="tab-tests" role="tab" aria-controls="panel-tests">Test cases</button>
-    </nav>
-    <div class="legend" aria-label="How to read the results">
-      <span class="l-red"><i></i>Red · stops the shipment (rulebook)</span>
-      <span class="l-amber"><i></i>Amber · needs a look (rulebook)</span>
-      <span class="l-data"><i></i>Data · problem in the booking itself</span>
-      <span class="l-adv"><i></i>Advisory · worth knowing, never changes the status</span>
-      <span class="l-info"><i></i>Prices are indicative · dates checked against <b id="today-short"></b></span>
+      <div id="hero-map" class="hmap" aria-live="polite"></div>
     </div>
   </div>
 </header>
