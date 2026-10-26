@@ -76,14 +76,52 @@ async function saveFile(name, buf) {
 
 // ---------- Tabs ----------
 const TABS = ['chat', 'file', 'rules', 'tests'];
+function renderMbar(ev) {
+  const m = $('#mbar'); if (!m) return;
+  m.innerHTML = '';
+  const on = !!ev && (location.hash.slice(1) || 'chat') === 'chat';
+  m.classList.toggle('on', on); document.body.classList.toggle('has-mbar', on);
+  if (!ev) return;
+  const c = ev.rec && ev.rec.chosen;
+  m.append(h('span', { class: 'ministamp v-' + ev.status }, STAMP[ev.status]),
+    h('span', { class: 'grow' }, [ev.reds ? `${ev.reds} must-fix` : null, ev.ambers ? `${ev.ambers} to check` : null].filter(Boolean).join(' · ') || 'No problems', c ? ' · ' : '', c ? h('b', null, `${c.carrier} ${PF.gbp(c.cost)}`) : null),
+    h('button', { class: 'btn small', type: 'button', onclick: () => { const r = $('#sheet .report') || $('#sheet'); r.scrollIntoView({ behavior: 'smooth' }); } }, 'Report ↓'));
+}
 function showTab(t) {
   if (!TABS.includes(t)) t = 'chat';
   TABS.forEach(x => { $('#tab-' + x).setAttribute('aria-selected', x === t); $('#panel-' + x).hidden = x !== t; });
   if (t === 'tests') renderTests();
+  const mb = $('#mbar'); if (mb) { const on = t === 'chat' && cs.complete; mb.classList.toggle('on', on); document.body.classList.toggle('has-mbar', on); }
   try { if (location.hash.slice(1) !== t) history.replaceState(null, '', '#' + t); } catch (e) {}
 }
 TABS.forEach(t => $('#tab-' + t).addEventListener('click', () => showTab(t)));
 window.addEventListener('hashchange', () => showTab(location.hash.slice(1)));
+
+
+// ---------- Route strip: the booking's lane, lit; red when the chosen carrier can't take the pallets ----------
+const CITY_XY = { Manchester: [175, 170], Leeds: [200, 148], Birmingham: [188, 208], London: [215, 245], Amsterdam: [395, 200], Rotterdam: [378, 228], Hamburg: [500, 140], Berlin: [590, 170], Frankfurt: [470, 300], Paris: [300, 330], Lyon: [355, 440] };
+const LEFT = ['Manchester', 'Birmingham', 'London'];
+const DESTS = ['Amsterdam', 'Rotterdam', 'Hamburg', 'Berlin', 'Frankfurt', 'Paris', 'Lyon'];
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function arc(o, d) {
+  const cx = (o[0] + d[0]) / 2, cy = Math.min(o[1], d[1]) - Math.max(40, Math.abs(d[0] - o[0]) * 0.28);
+  let len = 0, px = o[0], py = o[1];
+  for (let i = 1; i <= 24; i++) { const t = i / 24, x = (1 - t) * (1 - t) * o[0] + 2 * (1 - t) * t * cx + t * t * d[0], y = (1 - t) * (1 - t) * o[1] + 2 * (1 - t) * t * cy + t * t * d[1]; len += Math.hypot(x - px, y - py); px = x; py = y; }
+  return { d: `M${o[0]} ${o[1]} Q${cx.toFixed(0)} ${cy.toFixed(0)} ${d[0]} ${d[1]}`, len: Math.ceil(len) };
+}
+function routeEl(ev) {
+  const b = ev.b, rec = ev.rec, o = CITY_XY[b.originCity], d = CITY_XY[b.destCity];
+  if (!o || !d || !rec) return null;
+  const c = rec.chosen, blocked = c.fits === false, live = arc(o, d);
+  const lanes = DESTS.filter(x => x !== b.destCity).map(x => `<path class="lane" d="${arc(o, CITY_XY[x]).d}"/>`).join('');
+  const cities = Object.entries(CITY_XY).map(([n, [x, y]]) => { const on = n === b.originCity || n === b.destCity; return `<g class="city${on ? ' on' : ''}">${on ? `<circle class="halo" cx="${x}" cy="${y}" r="14"/>` : ''}<circle class="core" cx="${x}" cy="${y}" r="${on ? 6 : 3.5}"/>${LEFT.includes(n) ? `<text x="${x - 12}" y="${y + 5}" text-anchor="end">` : `<text x="${x + 10}" y="${y - 10}">`}${esc(n.toUpperCase())}</text></g>`; }).join('');
+  const svg = `<svg viewBox="50 90 630 380" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${esc(`Route ${b.originCity} to ${b.destCity}`)}"><defs><linearGradient id="gLive" x1="0" x2="1"><stop offset="0" stop-color="#4FD1FF"/><stop offset="1" stop-color="#FFB547"/></linearGradient></defs>${lanes}<path class="live${blocked ? ' blocked' : ''}" d="${live.d}" style="--len:${live.len}"/>${blocked ? '' : `<circle r="7" fill="#FFB547"><animateMotion dur="5s" repeatCount="indefinite" path="${live.d}"/></circle>`}${cities}</svg>`;
+  const cap = blocked
+    ? h('div', { class: 'cap' }, h('span', { class: 'k' }, `Route blocked · ${b.originCity} → ${b.destCity}`), h('span', null, h('b', null, PF.label(c)), ` can’t take ${PF.kg(rec.wpp)} pallets (max ${c.maxW} kg).`), rec.fixes.length ? h('span', null, 'Fix: ', h('b', null, rec.fixes[0].text)) : null)
+    : h('div', { class: 'cap' }, h('span', { class: 'k' }, `Route clear · ${b.originCity} → ${b.destCity}`), h('span', null, h('b', null, PF.label(c))), h('span', null, `${PF.gbp(c.cost)} · ${c.transit} days · ${c.onTime}% on time`), ev.eta ? h('span', null, `Collect ${PF.fmtDateLong(ev.eta.collect)} · arrive ${PF.fmtDateLong(ev.eta.arrive)}`) : null);
+  return h('div', { class: 'route' + (blocked ? ' blocked' : '') }, h('div', { html: svg }), cap);
+}
+const advKind = a => (/^Possible dangerous goods/.test(a) ? 'Dangerous goods' : /^By weight/.test(a) ? 'Pallet plan' : /HS|commodity/i.test(a) ? 'HS code' : /weight|pallet/i.test(a) ? 'Weight' : 'Advisory');
 
 // ---------- Report (shared by chat and file modes) ----------
 function fixActions(c, ev, mode) {
@@ -150,7 +188,7 @@ function reportEl(ev, ctx) {
     h('ul', null, [...passed, ...cannot].map(c => h('li', { class: 'p-' + c.status }, h('span', { class: 'rid' }, c.id), ' ', c.status === 'cannot' ? h('i', null, 'Couldn’t run: ') : c.status === 'na' ? h('i', null, 'Not applicable: ') : null, c.detail))));
 
   const advActs = hsAdvActs(ev);
-  const adv = advisories.length ? h('div', { class: 'advisories' }, h('p', { class: 'mini-h' }, 'Worth a look (not rulebook breaks)'), h('ul', null, advisories.map(a => h('li', null, a))),
+  const adv = advisories.length ? h('section', { class: 'advisories' }, h('p', { class: 'mini-h' }, `Advisories · ${advisories.length} · worth knowing, never change the status`), h('div', { class: 'advlist' }, advisories.map(a => h('div', { class: 'advcard' }, h('span', { class: 'adv-tag' }, advKind(a)), h('div', null, a)))),
     advActs.length ? h('div', { class: 'fix-acts' }, advActs.map(a => h('button', { class: 'btn small', type: 'button', onclick: () => ctx.apply(a) }, a.label))) : null) : null;
 
   let carrierEl = null;
@@ -197,7 +235,7 @@ function reportEl(ev, ctx) {
 
   const stamp = hsStamp() ? h('p', { class: 'note hsstamp' }, hsStamp()) : null;
   const hist = ctx.history ? historyEl(ctx.history(ev), 'History for this booking') : null;
-  return h('div', { class: 'report' }, head, reviewEl(ev, ctx), issueList, passedEl, adv, carrierEl, confEl, inv, stamp, hist);
+  return h('div', { class: 'report' }, head, routeEl(ev), reviewEl(ev, ctx), issueList, passedEl, adv, carrierEl, confEl, inv, stamp, hist);
 }
 
 function planEl(ev, ctx) {
@@ -339,6 +377,7 @@ function renderSheet() {
     h('tbody', null, b.items.length ? b.items.map((it, i) => h('tr', null, h('td', null, it.description, h('small', null, it.sku)), cellv(it, i, 'qty', PF.fmtNum), cellv(it, i, 'price', PF.gbp), cellv(it, i, 'upc', PF.fmtNum), cellv(it, i, 'cartons', PF.fmtNum), cellv(it, i, 'unitWeight', v => PF.fmtNum(v, 3)), cellv(it, i, 'hs'), cellv(it, i, 'coo')))
       : h('tr', null, h('td', { colspan: 8, class: 'empty' }, 'No items yet'))))));
   const ev = PF.evaluate(C.toRaw(cs, cs.confirmed || 'CHAT'), { today: PF.todayISO() });
+  renderMbar(cs.complete ? ev : null);
   if (cs.complete) s.append(reportEl(ev, chatCtx));
   else {
     // While details are still being collected, don't flag what simply hasn't been asked yet.
@@ -422,13 +461,13 @@ function renderFile() {
   const cnt = s => rows.filter(r => r.ev.status === s).length;
   out.append(h('div', { class: 'file-head' },
     h('div', null, h('h2', null, `${rows.length} booking${rows.length === 1 ? '' : 's'} checked`), h('p', { class: 'muted' }, fileData.name)),
-    h('div', { class: 'filters', role: 'group', 'aria-label': 'Filter by status' }, ['All', 'Red', 'Amber', 'Green'].map(s => h('button', { type: 'button', class: 'fbtn f-' + s, 'aria-pressed': filter === s, onclick: () => { filter = s; renderFile(); } }, s === 'All' ? `All ${rows.length}` : `${s} ${cnt(s)}`))),
+    h('div', { class: 'filters', role: 'group', 'aria-label': 'Filter by status' }, ['All', 'Red', 'Amber', 'Green', 'Review', 'Advisory'].map(s => h('button', { type: 'button', class: 'fbtn f-' + s, 'aria-pressed': filter === s, onclick: () => { filter = s; renderFile(); } }, s === 'All' ? `All ${rows.length}` : s === 'Review' ? `Needs review ${rows.filter(r => toReview(r)).length}` : s === 'Advisory' ? `Has advisories ${rows.filter(r => r.ev.advisories.length).length}` : `${s} ${cnt(s)}`))),
     h('button', { class: 'btn', type: 'button', onclick: exportResults, disabled: !rows.length }, 'Export results (.xlsx)')));
   fileData.notices.forEach(n => out.append(h('p', { class: 'notice n-' + n.level }, n.text)));
   if (!rows.length) { out.append(h('p', { class: 'note-warn' }, 'No bookings found under the header row.')); return; }
   const exp = fileData.expected;
   const tbody = h('tbody');
-  rows.filter(r => filter === 'All' || r.ev.status === filter).forEach(r => {
+  rows.filter(r => filter === 'All' || (filter === 'Review' ? toReview(r) > 0 : filter === 'Advisory' ? r.ev.advisories.length > 0 : r.ev.status === filter)).forEach(r => {
     const { ev } = r; const b = ev.b;
     const flagged = [...ev.checks.filter(c => c.status === 'fail' || c.status === 'check').map(c => ({ t: c.id, s: c.status === 'check' ? 'Amber' : c.sev })), ...(ev.dataIssues.length ? [{ t: `Data ×${ev.dataIssues.length}`, s: ev.dataIssues.some(d => d.sev === 'Red') ? 'Red' : 'Amber' }] : [])];
     const e = exp && exp[b.id.toUpperCase()];
@@ -438,7 +477,7 @@ function renderFile() {
       h('td', null, b.seller || '—'),
       h('td', null, `${b.originCity || '?'} → ${b.destCity || '?'}`),
       h('td', null, h('span', { class: 'pill p-' + ev.status }, ev.status)),
-      h('td', null, flagged.length ? flagged.map(f => h('span', { class: 'rchip s-' + f.s }, f.t)) : h('span', { class: 'muted' }, 'none')),
+      h('td', null, flagged.length ? flagged.map(f => h('span', { class: 'rchip s-' + f.s }, f.t)) : h('span', { class: 'muted' }, 'none'), ev.advisories.length ? h('span', { class: 'rchip s-Adv', title: 'Advisories never change the status' }, `Adv ×${ev.advisories.length}`) : null),
       h('td', null, !ev.rec ? '—' : ev.rec.chosen.fits === false && ev.rec.fixes.length ? h('span', null, h('s', { class: 'muted' }, ev.rec.chosen.carrier), ' → ', `${ev.rec.fixes[0].carrier}${ev.rec.fixes[0].type === 'repack' ? ` on ${ev.rec.fixes[0].pallets} plt` : ''} · ${PF.gbp(ev.rec.fixes[0].cost)}`) : `${ev.rec.chosen.carrier} · ${PF.gbp(ev.rec.chosen.cost)}`),
       h('td', { class: 'num' }, toReview(r) || ''),
       exp ? h('td', null, e ? h('span', { class: String(e.status).toLowerCase() === ev.status.toLowerCase() ? 'match' : 'mismatch', title: e.rules || '' }, String(e.status).toLowerCase() === ev.status.toLowerCase() ? `✓ ${e.status}` : `✕ expected ${e.status}`) : '—') : null);
@@ -503,6 +542,12 @@ function renderRules() {
     'R-10': 'Compared with today’s date in your browser. Today passes. Dates are read day-first (DD-MM-YYYY); real Excel dates and ISO dates also work; impossible dates (31-02) are rejected rather than guessed.',
   };
   R.innerHTML = '';
+  let nTests = '—'; try { nTests = window.PFTests(PF, C).length; } catch (e) {}
+  R.append(h('div', { class: 'stats' },
+    h('div', { class: 'stat' }, h('b', null, '10'), h('span', null, 'Rules, R-01 to R-10')),
+    h('div', { class: 'stat' }, h('b', null, String(nTests)), h('span', null, 'Automated tests')),
+    h('div', { class: 'stat' }, h('b', null, '25'), h('span', null, 'Planted-error bookings')),
+    h('div', { class: 'stat' }, h('b', null, '0'), h('span', null, 'Crashes on bad input'))));
   R.append(h('div', { class: 'tablewrap' }, h('table', { class: 'rtable' },
     h('thead', null, h('tr', null, h('th', null, 'Rule'), h('th', null, 'Severity'), h('th', null, 'How Preflight checks it'))),
     h('tbody', null, Object.entries(PF.RULES).map(([id, r]) => h('tr', null, h('td', null, h('b', null, id), ' ', r.text), h('td', null, h('span', { class: 'pill p-' + r.sev }, r.sev)), h('td', null, how[id])))))));
@@ -549,5 +594,6 @@ function renderTests() {
 // ---------- boot ----------
 greet(); renderSheet(); renderRules();
 $('#today').textContent = PF.fmtDateLong(PF.todayISO());
+$('#today-short').textContent = PF.fmtDate(PF.todayISO());
 showTab(location.hash.slice(1) || 'chat');
 })();
