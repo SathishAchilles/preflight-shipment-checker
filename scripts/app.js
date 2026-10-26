@@ -49,8 +49,20 @@ function fixActions(c, ev, mode) {
   if (c.id === 'R-02' && c.computed != null) acts.push({ label: `Set declared value to ${PF.gbp(c.computed)}`, patch: { declared: c.computed }, say: `declared value is £${c.computed}` });
   if (c.id === 'R-08') acts.push({ label: 'Mark appointment as booked', patch: { appointment: 'Yes' }, say: 'the delivery appointment is booked' });
   if (c.id === 'R-10') acts.push({ label: 'Set ready date to today', patch: { ready: PF.fmtDate(today) }, say: 'ready today' });
-  if (c.id === 'R-01') ev.b.items.forEach((it, i) => { if ((c.items || []).includes(it.sku)) { const hint = PF.hsHint(it.description); if (hint) acts.push({ label: `Use ${hint.code} for ${it.sku}`, itemPatch: { i, f: { hs: hint.code } }, say: `HS code for ${it.description.toLowerCase()} is ${hint.code}` }); } });
+  if (c.id === 'R-01') ev.b.items.forEach((it, i) => { if ((c.items || []).includes(it.sku)) { const recs = hsRecActs(it, i); if (recs.length) acts.push(...recs); else { const hint = PF.hsHint(it.description); if (hint) acts.push(hsUse(it, i, hint.code)); } } });
   return acts;
+}
+// "Use <code>" action: the code is written into the item only when clicked (file) or confirmed by the seller (chat).
+function hsUse(it, i, code) { return { label: `Use ${code} for ${it.sku}`, itemPatch: { i, f: { hs: String(code) } }, say: `HS code for ${(it.description || it.sku).toLowerCase()} is ${code}` }; }
+function hsRecActs(it, i) { return (it.hsRec || []).map(r => hsUse(it, i, r.code)); }
+// Recommendations attached to HS advisories (items whose code passes R-01 but lost a leading zero).
+function hsAdvActs(ev) { const r01 = ev.checks.find(c => c.id === 'R-01'), bad = (r01 && r01.items) || []; return ev.b.items.flatMap((it, i) => bad.includes(it.sku) ? [] : hsRecActs(it, i)); }
+function hsStamp() { const m = PF.hsMeta(); return m ? `HS codes checked against UK tariff snapshot ${m.version} (${PF.fmtDate(m.snapshotDate)}) — DBT data, Open Government Licence v3.0.` : null; }
+function hsCell(it) {
+  if (it.hs.blank) return h('td', { class: 'bad' }, PF.hsHint(it.description) ? `missing — try ${PF.hsHint(it.description).code}` : 'missing');
+  const short = it.hs.digits.length < 6 || it.hs.hasLetters, look = short ? { known: null } : PF.hsLookup(it.hs.digits);
+  return h('td', { class: short || look.known === false ? 'bad' : '' }, it.hs.raw,
+    look.known ? h('small', { class: 'hsdesc' }, look.desc) : look.known === false ? h('small', { class: 'hsdesc' }, 'not in UK tariff') : null);
 }
 function reportEl(ev, ctx) {
   const { b, checks, dataIssues, advisories, status, rec, eta } = ev;
@@ -84,7 +96,9 @@ function reportEl(ev, ctx) {
   const passedEl = h('details', { class: 'passed' }, h('summary', null, `${passed.length} check${passed.length === 1 ? '' : 's'} passed${cannot.length ? `, ${cannot.length} couldn't run` : ''}`),
     h('ul', null, [...passed, ...cannot].map(c => h('li', { class: 'p-' + c.status }, h('span', { class: 'rid' }, c.id), ' ', c.status === 'cannot' ? h('i', null, 'Couldn’t run: ') : c.status === 'na' ? h('i', null, 'Not applicable: ') : null, c.detail))));
 
-  const adv = advisories.length ? h('div', { class: 'advisories' }, h('p', { class: 'mini-h' }, 'Worth a look (not rulebook breaks)'), h('ul', null, advisories.map(a => h('li', null, a)))) : null;
+  const advActs = hsAdvActs(ev);
+  const adv = advisories.length ? h('div', { class: 'advisories' }, h('p', { class: 'mini-h' }, 'Worth a look (not rulebook breaks)'), h('ul', null, advisories.map(a => h('li', null, a))),
+    advActs.length ? h('div', { class: 'fix-acts' }, advActs.map(a => h('button', { class: 'btn small', type: 'button', onclick: () => ctx.apply(a) }, a.label))) : null) : null;
 
   let carrierEl = null;
   if (rec) {
@@ -125,10 +139,11 @@ function reportEl(ev, ctx) {
   const inv = b.items.length ? h('details', { class: 'invoice' }, h('summary', null, 'Commercial invoice lines'),
     h('div', { class: 'tablewrap' }, h('table', { class: 'itable' },
       h('thead', null, h('tr', null, ['SKU', 'Description', 'HS code', 'Origin', 'Qty', 'Unit', 'Line total', 'Packing', 'kg/unit'].map((x, i) => h('th', { class: i >= 4 ? 'num' : '' }, x)))),
-      h('tbody', null, b.items.map((it, i) => h('tr', null, h('td', null, it.sku), h('td', null, it.description || '—'), h('td', { class: it.hs.blank || it.hs.digits.length < 6 || it.hs.hasLetters ? 'bad' : '' }, it.hs.blank ? (PF.hsHint(it.description) ? `missing — try ${PF.hsHint(it.description).code}` : 'missing') : it.hs.raw), h('td', { class: it.coo ? '' : 'bad' }, it.coo || 'missing'), h('td', { class: 'num' }, PF.fmtNum(it.qty)), h('td', { class: 'num' }, PF.gbp(it.price)), h('td', { class: 'num' }, PF.gbp(lines[i])), h('td', { class: 'num' }, `${PF.fmtNum(it.upc)} × ${PF.fmtNum(it.cartons)} ctn`), h('td', { class: 'num' }, PF.fmtNum(it.unitWeight, 3))))),
+      h('tbody', null, b.items.map((it, i) => h('tr', null, h('td', null, it.sku), h('td', null, it.description || '—'), hsCell(it), h('td', { class: it.coo ? '' : 'bad' }, it.coo || 'missing'), h('td', { class: 'num' }, PF.fmtNum(it.qty)), h('td', { class: 'num' }, PF.gbp(it.price)), h('td', { class: 'num' }, PF.gbp(lines[i])), h('td', { class: 'num' }, `${PF.fmtNum(it.upc)} × ${PF.fmtNum(it.cartons)} ctn`), h('td', { class: 'num' }, PF.fmtNum(it.unitWeight, 3))))),
       h('tfoot', null, h('tr', null, h('td', { colspan: 6 }, 'Total of lines · declared on booking'), h('td', { class: 'num' }, lines.every(x => x != null) ? PF.gbp(lines.reduce((a, c2) => a + c2, 0)) : '—', h('br'), h('small', null, PF.gbp(b.declared))), h('td', { colspan: 2 })))))) : null;
 
-  return h('div', { class: 'report' }, head, issueList, passedEl, adv, carrierEl, confEl, inv);
+  const stamp = hsStamp() ? h('p', { class: 'note hsstamp' }, hsStamp()) : null;
+  return h('div', { class: 'report' }, head, issueList, passedEl, adv, carrierEl, confEl, inv, stamp);
 }
 
 function planEl(ev, ctx) {
@@ -376,7 +391,7 @@ $('#skip-ex').addEventListener('change', () => { if (fileData) ingest(fileData.s
 function renderRules() {
   const R = $('#rules-body');
   const how = {
-    'R-01': 'Digits are counted after removing spaces and dots, so “6912.00” counts as 691200. Letters fail. A 5-digit number typed into a number cell gets a hint that Excel may have dropped a leading zero. A suggested code is offered for common products — always to be verified.',
+    'R-01': 'Digits are counted after removing spaces and dots, so “6912.00” counts as 691200. Letters fail. A 5-digit number typed into a number cell gets a hint that Excel may have dropped a leading zero. The code is always checked exactly as entered and never corrected for you: when the UK tariff snapshot shows what was probably meant (090111 for 90111, 691200 for heading 6912), it is offered as a recommendation with a “Use” button. Codes that pass but are not real HS subheadings or UK commodity codes get an advisory. A suggested code is offered for common products — always to be verified.',
     'R-02': 'Sum of quantity × unit price, compared with the declared value. Exactly 1% apart still passes. If the gap equals one item’s line value, that item is named as the likely cause; a ×10 gap is called out as a misplaced zero.',
     'R-03': 'Exact match per item. The fix offers both directions: correct the quantity, or the carton count (only if it divides evenly).',
     'R-04': 'Exact match. If the gap equals one item’s cartons, that item is named.',
@@ -394,6 +409,7 @@ function renderRules() {
   R.append(h('h3', null, 'Also checked (data quality)'),
     h('p', null, 'Possible dangerous goods outside R-06 (ADR classes 1–9: fireworks, gas cartridges, matches, charcoal, pool chlorine, pesticides, car batteries, drain cleaner, dry ice, airbags…) are shown as an Advisory with the ADR class, typical UN numbers and the exemption that would make the item unregulated. An Advisory never changes Red/Amber/Green — only the ten rules above do.'),
     h('p', null, 'Missing or non-numeric required fields, zero or fractional counts, a destination city that doesn’t match its country, cities or countries with no carrier route, currency other than GBP, bookings with no items, duplicate Booking IDs, item rows pointing at unknown bookings, and duplicate SKUs. These are listed as “Data” issues alongside the rulebook results.'));
+  if (hsStamp()) R.append(h('p', { class: 'note hsstamp' }, hsStamp()));
   R.append(h('h3', null, 'Carrier options (fixed rate card)'), h('div', { class: 'tablewrap' }, h('table', { class: 'ctable' },
     h('thead', null, h('tr', null, ['Carrier', 'Service', 'Route', 'Per pallet', 'Transit', 'On time', 'Max/pallet'].map((x, i) => h('th', { class: i > 2 ? 'num' : '' }, x)))),
     h('tbody', null, PF.CARRIERS.map(c => h('tr', null, h('td', null, c.carrier), h('td', null, c.service), h('td', null, 'UK → ' + c.dest), h('td', { class: 'num' }, PF.gbp(c.price)), h('td', { class: 'num' }, c.transit + ' days'), h('td', { class: 'num' }, c.onTime + '%'), h('td', { class: 'num' }, c.maxW + ' kg')))))));

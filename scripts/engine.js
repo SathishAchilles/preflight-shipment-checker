@@ -330,7 +330,7 @@ function hsHeading(h4) {
 function hsShort(desc) {
   if (!desc) return '';
   const parts = desc.split(' > ');
-  if (parts.length === 1) return desc.length > 110 ? desc.slice(0, 107).replace(/[ ,;]+\S*$/, '') + '…' : desc;
+  if (parts.length === 1) { const d = desc.length > 110 ? desc.split(' (')[0].split(';')[0] : desc; return d.length > 110 ? d.slice(0, 107).replace(/[ ,;]+\S*$/, '') + '…' : d; }
   return `${parts[0].split(/[;,]/)[0]} > ${parts[parts.length - 1]}`;
 }
 // Codes recommended from the code as entered (never applied; shown with a "Use" action): lost leading zeros, single-subheading headings.

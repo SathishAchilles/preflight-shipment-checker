@@ -110,6 +110,7 @@ thead th { font-size: 13px; font-weight: 600; color: var(--muted); border-bottom
 .num { text-align: right; font-variant-numeric: tabular-nums; }
 td.empty { color: var(--muted); font-style: italic; }
 td.bad { color: var(--red); font-weight: 500; }
+.hsdesc { display: block; font-size: 12px; font-weight: 400; line-height: 1.35; max-width: 42ch; }
 .itable td small { display: block; }
 .livechecks { margin-top: 16px; }
 .livechecks > ul:first-of-type { list-style: none; padding: 0; margin: 6px 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
@@ -292,6 +293,7 @@ footer { max-width: 1320px; margin: 0 auto; padding: 0 24px 32px; color: var(--m
 </main>
 <footer>Checks run in your browser against today’s date (<span id="today"></span>). Nothing you type or upload leaves this page.</footer>
 <script>window.SAMPLE_XLSX_B64 = "{{SAMPLE}}";</script>
+<script>window.HS_INDEX = {{HSINDEX}};</script>
 <script>{{ENGINE}}</script>
 <script>{{CHAT}}</script>
 <script>{{TESTS}}</script>

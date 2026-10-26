@@ -80,15 +80,15 @@
 
 ## 4. Build and UI
 
-- [ ] 4.1 `scripts/shell.html`: add `<script>window.HS_INDEX = {{HSINDEX}};</script>` before `{{ENGINE}}`. In `scripts/build.py`, read `../assets/hs_index.json`, assert it is ≤ 2.0 MB and contains no `</script`, and substitute `{{HSINDEX}}`. Verify: `cd scripts && python3 build.py` succeeds, and the printed size grows by about 1.8 MB.
-- [ ] 4.2 `scripts/app.js` item table (~line 125): under a valid code, show the `h6` description as a small secondary line; for an unknown 6+ digit code, show "not in UK tariff" with class `bad`.
+- [x] 4.1 `scripts/shell.html`: add `<script>window.HS_INDEX = {{HSINDEX}};</script>` before `{{ENGINE}}`. In `scripts/build.py`, read `../assets/hs_index.json`, assert it is ≤ 2.0 MB and contains no `</script`, and substitute `{{HSINDEX}}`. Verify: `cd scripts && python3 build.py` succeeds, and the printed size grows by about 1.8 MB.
+- [x] 4.2 `scripts/app.js` item table (~line 125): under a valid code, show the `h6` description as a small secondary line; for an unknown 6+ digit code, show "not in UK tariff" with class `bad`.
   - Verify: open `preflight.html`, load the sample workbook, and check that TB-01 shows `691200` with "Ceramic tableware…" and that a code edited to `999999` shows "not in UK tariff".
-- [ ] 4.2b Recommendation actions (spec "HS codes are never corrected automatically"). In `fixActions()` (`app.js` ~lines 45–51), for the R-01 check and for HS advisories, add one button per `n.hsRec` entry and per `hsSuggest` code: label "Use <code> for <SKU>", `itemPatch: { i, hs: '<code>' }` (stored as text), `say: 'HS code for <SKU> is <code>'`. Nothing calls `ctx.apply` without a click. Verify:
+- [x] 4.2b Recommendation actions (spec "HS codes are never corrected automatically"). In `fixActions()` (`app.js` ~lines 45–51), for the R-01 check and for HS advisories, add one button per `n.hsRec` entry and per `hsSuggest` code: label "Use <code> for <SKU>", `itemPatch: { i, hs: '<code>' }` (stored as text), `say: 'HS code for <SKU> is <code>'`. Nothing calls `ctx.apply` without a click. Verify:
   - load the sample workbook; TB-02 shows "Use 610910 for TSH-01" and TSH-01's code stays blank until clicked;
   - after clicking, the row is marked edited and R-01 passes for that item;
   - "Reset edits" (overrides cleared, ~line 278) restores the blank code;
   - in chat, the recommendation is only recorded after the seller says "yes" or types the code.
-- [ ] 4.3 Add the snapshot stamp line, "HS codes checked against UK tariff snapshot <version> (<DD-MM-YYYY>) — DBT data, Open Government Licence v3.0", to the booking report and the Rules tab, reading `meta` from the index.
+- [x] 4.3 Add the snapshot stamp line, "HS codes checked against UK tariff snapshot <version> (<DD-MM-YYYY>) — DBT data, Open Government Licence v3.0", to the booking report and the Rules tab, reading `meta` from the index.
   - Verify: the line is visible in both places with `v4.0.1639` and `26-10-2026` (the `meta` of the committed export).
 - [ ] 4.4 No-API and determinism check (spec "Validation from a bundled tariff snapshot"). Open the hosted `preflight.html` with the DevTools Network tab open, then upload `assets/Preflight_Test_Cases.xlsx` twice and compare the reports. Verify: no request goes to `trade-tariff.service.gov.uk` or `data.api.trade.gov.uk` (the SheetJS request to cdnjs at page load is expected), and the HS results are identical across both runs.
 
