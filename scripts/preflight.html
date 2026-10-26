@@ -3258,7 +3258,7 @@ function send(text) {
       h('ul', null, reply.corrections.map(c => h('li', null, `${c.sku ? c.label + ' (' + c.sku + ')' : c.label}: ${shown(c.entered)} → ${c.used} (${c.why})`)))));
     if (reply.intent === 'confirm-blocked') parts.push(h('p', { class: 'note-warn' }, `I can’t confirm while there ${ev.reds === 1 ? 'is 1 red issue' : 'are ' + ev.reds + ' red issues'} — red means the shipment would be stopped. Fix ${ev.reds === 1 ? 'it' : 'them'} (the buttons in the report do most of it) and say “confirm” again.`));
     if (reply.intent === 'confirmed') parts.push(confCard(ev, reply.ref));
-    if (reply.intent !== 'confirmed') chips = ev.status === 'Red' ? ['What’s wrong?'] : ['Confirm booking', 'What’s wrong?'];
+    if (reply.intent !== 'confirmed') chips = ev.status === 'Red' ? ['What’s wrong?'] : ev.status === 'Amber' ? ['Confirm booking', 'What’s wrong?'] : ['Confirm booking']; // nothing to ask about when every check passed
     if (chips && reply.corrections && reply.corrections.length) chips = ['Looks right', ...chips];
     if (ev.status !== 'Red' && reply.intent !== 'confirmed' && !reply.firstComplete && !reply.diff.length && !ch.length && !reply.nothing) {/* summary only */}
   } else {
