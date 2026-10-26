@@ -90,7 +90,7 @@
   - in chat, the recommendation is only recorded after the seller says "yes" or types the code.
 - [x] 4.3 Add the snapshot stamp line, "HS codes checked against UK tariff snapshot <version> (<DD-MM-YYYY>) — DBT data, Open Government Licence v3.0", to the booking report and the Rules tab, reading `meta` from the index.
   - Verify: the line is visible in both places with `v4.0.1639` and `26-10-2026` (the `meta` of the committed export).
-- [ ] 4.4 No-API and determinism check (spec "Validation from a bundled tariff snapshot"). Open the hosted `preflight.html` with the DevTools Network tab open, then upload `assets/Preflight_Test_Cases.xlsx` twice and compare the reports. Verify: no request goes to `trade-tariff.service.gov.uk` or `data.api.trade.gov.uk` (the SheetJS request to cdnjs at page load is expected), and the HS results are identical across both runs.
+- [x] 4.4 No-API and determinism check (spec "Validation from a bundled tariff snapshot"). Open the hosted `preflight.html` with the DevTools Network tab open, then upload `assets/Preflight_Test_Cases.xlsx` twice and compare the reports. Verify: no request goes to `trade-tariff.service.gov.uk` or `data.api.trade.gov.uk` (the SheetJS request to cdnjs at page load is expected), and the HS results are identical across both runs.
 
 ## 5. HS code suggestion from the description (design D6)
 
@@ -115,8 +115,8 @@
 - [x] 6.1 `scripts/vercel_build.sh`: `set -eu`; run `snapshot_tariff.py --if-new` and `export_hs_index.py`; if either fails and `HS_ALLOW_STALE=1`, print a warning and keep the committed `assets/hs_index.json`, otherwise exit non-zero; then `cd scripts && python3 build.py`, and copy `scripts/preflight.html` to `dist/index.html`. `vercel.json` at the repo root: `regions: ["sin1"]`, `installCommand: "dnf install -y postgresql16"`, `buildCommand: "sh scripts/vercel_build.sh"`, `outputDirectory: "dist"`, `framework: null`. Add `dist/` to `.gitignore`.
   - Verify: locally, `sh scripts/vercel_build.sh` (with `PSQL` from `.env.local`) prints the version line, `already loaded` and the export counts, and writes `dist/index.html`; with `DATABASE_MIGRATION_URL` pointing at a closed port it exits non-zero, and with `HS_ALLOW_STALE=1` it succeeds and prints the warning.
 - [x] 6.2 Create the Vercel project `preflight-shipment-checker` in team curious-minds3, linked to `github.com/SathishAchilles/preflight-shipment-checker` (production branch `main`), and add `DATABASE_MIGRATION_URL` as a sensitive variable for Production and Preview. Verify: the project shows the Git link and the variable (value hidden) in both environments; nothing else is configured.
-- [ ] 6.3 Push the HS branch and check its preview deployment. Verify: the build log shows `dnf` installing `psql`, the DBT version line, `already loaded`, the export counts and `OK`; the preview URL opens the app, the report footer shows `v4.0.1639 (26-10-2026)`, and the browser makes no request to the database, trade-tariff or data.api.trade.gov.uk.
-- [ ] 6.4 After review, merge to `main` and check the production deployment the same way. Verify: the production URL serves the same page as the preview, and `SKILL.md` names the production URL and the Vercel build steps.
+- [x] 6.3 Push the HS branch and check its preview deployment. Verify: the build log shows `dnf` installing `psql`, the DBT version line, `already loaded`, the export counts and `OK`; the preview URL opens the app, the report footer shows `v4.0.1639 (26-10-2026)`, and the browser makes no request to the database, trade-tariff or data.api.trade.gov.uk.
+- [x] 6.4 After review, merge to `main` and check the production deployment the same way. Verify: the production URL serves the same page as the preview, and `SKILL.md` names the production URL and the Vercel build steps.
 
 ---
 
