@@ -88,4 +88,12 @@ Collection = ready date (today if past), moved to Monday if weekend; delivery = 
   Only `fail` on a Red rule is a stop. `check`, `cannot` and Amber fails count as "need a look", with no £.
 - **Before / now / avoided.** "Before" is the booking as uploaded (`fileData.baseline`, evaluated once at ingest). "Now" includes the fixes applied in this session. "Avoided" means stopped before and not now; a partly fixed booking is still stopped.
 - **Cost estimate** (`avoidedCost()`). The user enters low and high £ per stopped booking for each stage. There are no defaults. Each stage contributes n × low to n × high, and blank or invalid stages are left out. The panel shows "At stake as uploaded" (every stop) and "Avoided by fixes so far". It is always labelled an estimate and is never added to carrier prices. Figures are kept in `localStorage['pf-outcome-costs']`.
+- **Charts** (Night Route look, `outcomesPanel()` in `app.js`):
+  - a route of the stops with before/now bars;
+  - a waffle with one cell per booking;
+  - "As uploaded" and "Now" stacked bars;
+  - a ring for stops fixed;
+  - cost range bars.
+
+  It is built once per file and updated in place, so fixes animate. It honours reduced motion, and a data table repeats every number.
 - **Never changes Red/Amber/Green.** Sample workbook: 12 of 25 stopped (3 / 4 / 3 / 2), 5 need a look, 8 clean.
