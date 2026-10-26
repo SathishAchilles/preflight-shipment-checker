@@ -104,6 +104,10 @@ main { max-width: 1320px; margin: 0 auto; padding: 20px 24px 48px; }
 .chat-form textarea { flex: 1; resize: none; border: 1px solid var(--line); border-radius: 14px; padding: 10px 14px; background: var(--sheet); min-height: 44px; max-height: 140px; }
 .mini { border-left: 3px solid var(--c); padding: 6px 0 6px 12px; margin: 6px 0; }
 .mini ul { margin: 4px 0 8px; padding-left: 18px; font-size: 14.5px; }
+.plist { margin: 8px 0 6px; padding-left: 20px; display: grid; gap: 10px; font-size: 14.5px; }
+.plist li.s-Red::marker { color: var(--red); } .plist li.s-Amber::marker { color: var(--amber); }
+.plist .sevw { font: 11px var(--mono); color: var(--muted); }
+.plist .chips { margin-top: 6px; }
 .mini li.s-Red::marker { color: var(--red); } .mini li.s-Amber::marker { color: var(--amber); }
 .ministamp { font: 500 12px var(--mono); letter-spacing: .12em; text-transform: uppercase; border: 1px solid var(--c); color: var(--c); background: var(--t); padding: 2px 8px; border-radius: 999px; }
 .v-Red { --c: var(--red); --t: var(--red-tint); } .v-Amber { --c: var(--amber); --t: var(--amber-tint); } .v-Green { --c: var(--green); --t: var(--green-tint); }
@@ -2022,7 +2026,8 @@ function chatDate(text, today) {
 
 // ---------- Parse one message into a patch ----------
 function parseMessage(text, st, today) {
-  const raw = String(text || '');
+  // Curly quotes (as typed on phones and used in the app's own chips) read like straight ones.
+  const raw = String(text || '').replace(/[\u2018\u2019\u02bc]/g, "'").replace(/[\u201c\u201d]/g, '"');
   const low = raw.toLowerCase();
   const P = { booking: {}, items: [], removeItems: [], palletsDelta: 0, notes: [], intents: [], hsUnknown: [], cooUnknown: [], material: null, understood: false };
   const S = { w: ' ' + raw.replace(/[’]/g, "'") + ' ' }; // working copy; matched spans are masked with spaces
@@ -2424,6 +2429,7 @@ function turn(stIn, text, today) {
       reply.accepted = open;
       reply.notes.push(open.length ? `Thanks — ${open.length} automatic correction${open.length === 1 ? '' : 's'} marked as checked. Nothing in the booking changed.` : 'Nothing left to check.');
     }
+    reply.asked = P.intents.includes('summary');
     if (reply.firstComplete || P.intents.includes('summary')) reply.corrections = ev.corrections.filter(c => !st.reviewed[c.id]);
     if (P.intents.includes('confirm')) {
       if (ev.status === 'Red') reply.intent = 'confirm-blocked';
@@ -2721,6 +2727,7 @@ function runTests(PF, CHAT) {
     T('Conversation', 'After “don’t know”, the button text “HS code for ceramic mugs is 691200” sets the mugs’ code', () => { const { s } = talk([TWO, "don't know", 'HS code for ceramic mugs is 691200']); return expect(s.booking.items[0].hs === '691200' && s.booking.items[1].hs === '850760', [s.booking.items[0].hs, s.booking.items[1].hs]); });
     T('Conversation', '“use 691200” goes to the item that has no HS code, not the last item mentioned', () => { const { s } = talk([TWO, "don't know", 'use 691200']); return expect(s.booking.items[0].hs === '691200' && s.booking.items[1].hs === '850760', [s.booking.items[0].hs, s.booking.items[1].hs]); });
     T('Conversation', '“the HS code for the mugs is 691200” names the item', () => { const { s } = talk([TWO, "don't know", 'the HS code for the mugs is 691200']); return expect(s.booking.items[0].hs === '691200', s.booking.items[0].hs); });
+    T('Conversation', 'The “What\u2019s wrong?” chip (curly apostrophe) is understood as a request for the problems', () => { const { r } = talk([FULL.replace('Total weight 620kg', 'Total weight 1650kg'), 'What\u2019s wrong?']); return expect(r.asked === true && !r.nothing && r.status === 'Red', [r.asked, r.nothing, r.status]); });
     T('Conversation', 'Everything in one message → complete booking, Green, nothing asked', () => { const { s, r, ev: e } = talk([FULL]); return expect(s.complete && !r.ask && e.status === 'Green' && s.booking.seller === 'Northfield Goods', `${s.booking.seller} / ${r.ask} / ${e && e.status}`); });
     T('Conversation', 'Cartons (90) and declared value (£5,400) are worked out, not asked', () => { const { s } = talk([FULL]); const raw = CHAT.toRaw(s); return expect(raw.cartons === 90 && raw.declared === 5400, `${raw.cartons} ${raw.declared}`); });
     T('Conversation', '“add a pallet” → 4 pallets, checks re-run', () => { const { s, r } = talk([FULL, 'Actually, add a pallet']); return expect(s.booking.pallets === 4 && r.changes.some(c => c.field === 'pallets') && r.showReport, s.booking.pallets); });
@@ -3244,7 +3251,7 @@ function send(text) {
     const ev = PF.evaluate(C.toRaw(cs, cs.confirmed || 'CHAT'), { today: PF.todayISO() });
     if (reply.diff.length) parts.push(h('div', { class: 'got' }, h('p', { class: 'mini-h' }, 'Checks re-run'), h('ul', null, reply.diff.map(d => h('li', { class: 'd-' + d.to }, `${d.id} now ${STATUS_WORD[d.to]}`)))));
     if (reply.firstComplete) parts.push(h('p', null, 'That’s everything I need. Pre-flight result:'));
-    parts.push(miniVerdict(ev, reply.priceNote));
+    parts.push(miniVerdict(ev, reply.priceNote, reply.asked));
     noteCorrections(ev, { chat: true });
     (reply.accepted || []).forEach(c => logEvent({ booking: 'CHAT', sku: c.sku || '', field: c.label, before: shown(c.entered), after: c.used, action: 'accepted', chat: true }));
     if (reply.corrections && reply.corrections.length) parts.push(h('div', { class: 'got' }, h('p', { class: 'mini-h' }, 'I filled in or tidied these — please check'),
@@ -3276,12 +3283,32 @@ function warningsEl(warnings) {
       h('p', { class: 'warn-fix' }, h('b', null, 'What to do: '), w.fix),
       h('p', { class: 'warn-ref' }, w.ref)))));
 }
-function miniVerdict(ev, priceNote) {
+// "What's wrong?": each problem in plain words, with its one-click fixes as chips.
+function problemList(ev) {
+  const fails = ev.checks.filter(c => c.status === 'fail' || c.status === 'check');
+  const issues = [
+    ...ev.dataIssues.map(d => ({ kind: 'data', sev: d.sev, title: d.field, detail: d.text, fix: d.fix })),
+    ...fails.map(c => ({ kind: 'rule', sev: c.status === 'check' ? 'Amber' : c.sev, id: c.id, title: c.rule, detail: c.detail, fix: c.fix, check: c })),
+  ].sort((a, z) => (a.sev === z.sev ? 0 : a.sev === 'Red' ? -1 : 1));
+  if (!issues.length) return h('p', null, 'Nothing to fix — every check passed.');
+  return h('ol', { class: 'plist' }, issues.map(it => {
+    const pc = plainCard(it, ev), br = brief(it, ev);
+    const body = pc ? pc.body : [br.head, ...(br.lines || [])].filter(x => typeof x === 'string').join('. ');
+    const hint = pc ? pc.hint : br.line || (it.fix ? words(firstPart(it.fix), 14) : '');
+    const acts = it.check ? fixActions(it.check, ev, 'chat') : [];
+    return h('li', { class: 's-' + it.sev },
+      h('b', null, issueTitle(it, ev)), h('span', { class: 'sevw' }, ` · ${SEV_WORD[it.sev]}`), h('br'),
+      h('span', null, body), hint ? h('span', { class: 'muted' }, ` ${hint}.`.replace(/\.\.$/, '.')) : null,
+      acts.length ? h('div', { class: 'chips' }, acts.map(a => h('button', { class: 'chip', type: 'button', onclick: () => chatCtx.apply(a) }, a.label))) : null);
+  }));
+}
+function miniVerdict(ev, priceNote, asked) {
   const n = [ev.reds ? `${ev.reds} must fix` : null, ev.ambers ? `${ev.ambers} to check` : null].filter(Boolean).join(' · ') || 'nothing to fix';
   return h('div', { class: 'mini v-' + ev.status },
     h('p', null, h('span', { class: 'ministamp' }, STAMP[ev.status]), ' ', `All checked — ${n}.`),
     ev.warnings && ev.warnings.length ? h('p', { class: 'mini-warn' }, warnIcon(), ` ${ev.warnings.length} road-freight warning${ev.warnings.length === 1 ? '' : 's'} — ${[...new Set(ev.warnings.map(w => w.title))].join(' · ')}.`) : null,
-    h('p', { class: 'muted' }, 'Your full check is below.'),
+    asked ? problemList(ev) : null,
+    h('p', { class: 'muted' }, asked ? 'Every detail is in your full check below.' : 'Your full check is below.'),
     ev.rec && priceNote ? h('p', { class: 'note' }, PRICE_TXT) : null,
     h('button', { class: 'linkbtn only-narrow', type: 'button', onclick: () => ($('#chat-report .report') || $('#sheet')).scrollIntoView({ behavior: 'smooth' }) }, 'See your check ↓'));
 }

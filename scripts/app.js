@@ -486,7 +486,7 @@ function send(text) {
     const ev = PF.evaluate(C.toRaw(cs, cs.confirmed || 'CHAT'), { today: PF.todayISO() });
     if (reply.diff.length) parts.push(h('div', { class: 'got' }, h('p', { class: 'mini-h' }, 'Checks re-run'), h('ul', null, reply.diff.map(d => h('li', { class: 'd-' + d.to }, `${d.id} now ${STATUS_WORD[d.to]}`)))));
     if (reply.firstComplete) parts.push(h('p', null, 'That’s everything I need. Pre-flight result:'));
-    parts.push(miniVerdict(ev, reply.priceNote));
+    parts.push(miniVerdict(ev, reply.priceNote, reply.asked));
     noteCorrections(ev, { chat: true });
     (reply.accepted || []).forEach(c => logEvent({ booking: 'CHAT', sku: c.sku || '', field: c.label, before: shown(c.entered), after: c.used, action: 'accepted', chat: true }));
     if (reply.corrections && reply.corrections.length) parts.push(h('div', { class: 'got' }, h('p', { class: 'mini-h' }, 'I filled in or tidied these — please check'),
@@ -518,12 +518,32 @@ function warningsEl(warnings) {
       h('p', { class: 'warn-fix' }, h('b', null, 'What to do: '), w.fix),
       h('p', { class: 'warn-ref' }, w.ref)))));
 }
-function miniVerdict(ev, priceNote) {
+// "What's wrong?": each problem in plain words, with its one-click fixes as chips.
+function problemList(ev) {
+  const fails = ev.checks.filter(c => c.status === 'fail' || c.status === 'check');
+  const issues = [
+    ...ev.dataIssues.map(d => ({ kind: 'data', sev: d.sev, title: d.field, detail: d.text, fix: d.fix })),
+    ...fails.map(c => ({ kind: 'rule', sev: c.status === 'check' ? 'Amber' : c.sev, id: c.id, title: c.rule, detail: c.detail, fix: c.fix, check: c })),
+  ].sort((a, z) => (a.sev === z.sev ? 0 : a.sev === 'Red' ? -1 : 1));
+  if (!issues.length) return h('p', null, 'Nothing to fix — every check passed.');
+  return h('ol', { class: 'plist' }, issues.map(it => {
+    const pc = plainCard(it, ev), br = brief(it, ev);
+    const body = pc ? pc.body : [br.head, ...(br.lines || [])].filter(x => typeof x === 'string').join('. ');
+    const hint = pc ? pc.hint : br.line || (it.fix ? words(firstPart(it.fix), 14) : '');
+    const acts = it.check ? fixActions(it.check, ev, 'chat') : [];
+    return h('li', { class: 's-' + it.sev },
+      h('b', null, issueTitle(it, ev)), h('span', { class: 'sevw' }, ` · ${SEV_WORD[it.sev]}`), h('br'),
+      h('span', null, body), hint ? h('span', { class: 'muted' }, ` ${hint}.`.replace(/\.\.$/, '.')) : null,
+      acts.length ? h('div', { class: 'chips' }, acts.map(a => h('button', { class: 'chip', type: 'button', onclick: () => chatCtx.apply(a) }, a.label))) : null);
+  }));
+}
+function miniVerdict(ev, priceNote, asked) {
   const n = [ev.reds ? `${ev.reds} must fix` : null, ev.ambers ? `${ev.ambers} to check` : null].filter(Boolean).join(' · ') || 'nothing to fix';
   return h('div', { class: 'mini v-' + ev.status },
     h('p', null, h('span', { class: 'ministamp' }, STAMP[ev.status]), ' ', `All checked — ${n}.`),
     ev.warnings && ev.warnings.length ? h('p', { class: 'mini-warn' }, warnIcon(), ` ${ev.warnings.length} road-freight warning${ev.warnings.length === 1 ? '' : 's'} — ${[...new Set(ev.warnings.map(w => w.title))].join(' · ')}.`) : null,
-    h('p', { class: 'muted' }, 'Your full check is below.'),
+    asked ? problemList(ev) : null,
+    h('p', { class: 'muted' }, asked ? 'Every detail is in your full check below.' : 'Your full check is below.'),
     ev.rec && priceNote ? h('p', { class: 'note' }, PRICE_TXT) : null,
     h('button', { class: 'linkbtn only-narrow', type: 'button', onclick: () => ($('#chat-report .report') || $('#sheet')).scrollIntoView({ behavior: 'smooth' }) }, 'See your check ↓'));
 }

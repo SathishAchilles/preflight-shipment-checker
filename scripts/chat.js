@@ -65,7 +65,8 @@ function chatDate(text, today) {
 
 // ---------- Parse one message into a patch ----------
 function parseMessage(text, st, today) {
-  const raw = String(text || '');
+  // Curly quotes (as typed on phones and used in the app's own chips) read like straight ones.
+  const raw = String(text || '').replace(/[\u2018\u2019\u02bc]/g, "'").replace(/[\u201c\u201d]/g, '"');
   const low = raw.toLowerCase();
   const P = { booking: {}, items: [], removeItems: [], palletsDelta: 0, notes: [], intents: [], hsUnknown: [], cooUnknown: [], material: null, understood: false };
   const S = { w: ' ' + raw.replace(/[’]/g, "'") + ' ' }; // working copy; matched spans are masked with spaces
@@ -467,6 +468,7 @@ function turn(stIn, text, today) {
       reply.accepted = open;
       reply.notes.push(open.length ? `Thanks — ${open.length} automatic correction${open.length === 1 ? '' : 's'} marked as checked. Nothing in the booking changed.` : 'Nothing left to check.');
     }
+    reply.asked = P.intents.includes('summary');
     if (reply.firstComplete || P.intents.includes('summary')) reply.corrections = ev.corrections.filter(c => !st.reviewed[c.id]);
     if (P.intents.includes('confirm')) {
       if (ev.status === 'Red') reply.intent = 'confirm-blocked';
