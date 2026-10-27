@@ -110,7 +110,15 @@ def main():
         if a.if_new and not a.dry_run and is_loaded(version):
             print(f'{version} already loaded')
             return
-        text = fetch(url)
+        try:
+            text = fetch(url)
+        except urllib.error.HTTPError as e:
+            # DBT sometimes points versions/latest at a version whose tables aren't published yet (404).
+            # With --if-new (the deploy build) keep the loaded version and try again on the next deploy.
+            if not (a.if_new and e.code == 404):
+                raise
+            print(f'WARNING: {version} is listed as latest but its data returns 404; keeping the loaded version.', file=sys.stderr)
+            return
     rows = read_commodities(text)
     refs = read_refs(open(a.refs_file, encoding='utf-8').read() if a.refs_file else fetch(REFS))
     today = datetime.date.today().isoformat()
