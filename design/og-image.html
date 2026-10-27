@@ -1,0 +1,42 @@
+<!doctype html>
+<!-- Social preview (og:image), 1200 × 630. Rendered to assets/og-image.png with headless Chrome:
+     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --force-device-scale-factor=1 --window-size=1200,630 \
+       --hide-scrollbars --virtual-time-budget=5000 --screenshot=assets/og-image.png design/og-image.html -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CargoPass social preview</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Sora:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root { --paper: #070B16; --ink: #E8EEF9; --muted: #8794AF; --line: rgba(255,255,255,.10); --route: #4FD1FF; --amber: #FFB547; }
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 1200px; height: 630px; overflow: hidden; background: var(--paper); color: var(--ink); font-family: 'Sora', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+body { position: relative; background:
+  radial-gradient(900px 520px at 88% -12%, rgba(79,209,255,.20), transparent 60%),
+  radial-gradient(700px 420px at -8% 70%, rgba(255,181,71,.09), transparent 60%), var(--paper); }
+.card { position: absolute; inset: 0; padding: 72px 84px; display: flex; flex-direction: column; }
+.logo { display: flex; align-items: center; gap: 22px; font-weight: 500; font-size: 64px; letter-spacing: -.03em; }
+.logo i { width: 62px; height: 62px; border-radius: 50%; background: conic-gradient(from 200deg, var(--route), var(--amber), var(--route)); display: grid; place-items: center; }
+.logo i::after { content: ""; width: 28px; height: 28px; border-radius: 50%; background: var(--paper); }
+.logo b { font-weight: 500; color: var(--route); }
+.eyebrow { margin-top: 66px; font-family: 'JetBrains Mono', monospace; font-size: 22px; letter-spacing: .16em; text-transform: uppercase; color: var(--route); display: flex; align-items: center; gap: 16px; }
+.eyebrow::before { content: ""; width: 34px; height: 2px; background: currentColor; }
+h1 { margin: 22px 0 0; font-weight: 500; font-size: 76px; line-height: 1.04; letter-spacing: -.04em; max-width: 960px; }
+h1 span { background: linear-gradient(90deg, var(--route), #A6E9FF 50%, var(--amber)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.lanes { margin-top: auto; display: flex; gap: 34px; font-family: 'JetBrains Mono', monospace; font-size: 21px; color: var(--muted); }
+.lanes span { display: flex; align-items: center; gap: 12px; }
+.lanes span::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--route); box-shadow: 0 0 14px var(--route); }
+.route { position: absolute; right: 84px; top: 92px; width: 300px; height: 2px; background: linear-gradient(90deg, transparent, var(--route)); opacity: .55; }
+.route::after { content: ""; position: absolute; right: -6px; top: -5px; width: 12px; height: 12px; border-radius: 50%; background: var(--route); box-shadow: 0 0 18px var(--route); }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo"><i aria-hidden="true"></i><span>Cargo<b>Pass</b></span></div>
+  <div class="eyebrow">UK → Germany · France · Netherlands</div>
+  <h1>Clear the route <span>before</span> the truck rolls.</h1>
+  <div class="lanes"><span>10 freight checks</span><span>3 carriers</span><span>Book by chat or upload a sheet</span></div>
+</div>
+<div class="route" aria-hidden="true"></div>
+</body>
+</html>

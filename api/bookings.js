@@ -1,10 +1,17 @@
 // Saved bookings (one shared list): GET lists the newest, POST saves or updates a batch.
 // Connects as preflight_app (scripts/db/002_bookings.sql) through BOOKINGS_DATABASE_URL; the browser never sees it.
+// POST only accepts JSON from the app's own pages (Origin check). That stops other websites writing through a visitor's
+// browser; it is not authentication — anyone can still send a request without an Origin header.
 const { Pool } = require('pg');
 
 const MAX_ROWS = 1000, MAX_JSON = 65536, LIST_LIMIT = 500;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STATUSES = ['Red', 'Amber', 'Green'];
+const MODES = ['upsert', 'insert'];
+// The app's own origins: production, the project URL, this team's preview URLs, and the local dev server.
+const ORIGINS = [/^https:\/\/cargopass-uk\.vercel\.app$/, /^https:\/\/preflight-shipment-checker-five\.vercel\.app$/,
+  /^https:\/\/preflight-shipment-checker-[a-z0-9-]+-curious-minds3\.vercel\.app$/, /^http:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?$/];
+const allowedOrigin = o => o == null || ORIGINS.some(re => re.test(o));
 
 let pool = null;
 function db() {
@@ -53,6 +60,18 @@ on conflict (id) do update set booking_id = excluded.booking_id, overrides = exc
   original = case when bookings.source = 'chat' then excluded.original else bookings.original end,
   status = excluded.status, carrier = excluded.carrier, cost = excluded.cost, updated_at = now()`;
 
+// First save of an uploaded file: rows already saved (the same file uploaded again) are left as they are, fixes included.
+// Returns how many rows were new and the saved fixes of the rows that were already there (the outer select sees the
+// table as it was before this statement, so it lists only rows that existed already).
+const INSERT_NEW = `
+with x as (select * from jsonb_to_recordset($1::jsonb) as x(id uuid, source text, booking_id text, upload_id uuid, file_name text,
+  original jsonb, overrides jsonb, current jsonb, status text, carrier text, cost numeric)),
+ins as (insert into preflight.bookings (id, source, booking_id, upload_id, file_name, original, overrides, current, status, carrier, cost)
+  select id, source, booking_id, upload_id, file_name, original, overrides, current, status, carrier, cost from x
+  on conflict (id) do nothing returning id)
+select (select count(*) from ins)::int as inserted,
+  coalesce((select jsonb_agg(jsonb_build_object('id', b.id, 'overrides', b.overrides)) from preflight.bookings b join x on x.id = b.id), '[]'::jsonb) as existing`;
+
 const LIST = `
 select id, source, booking_id, upload_id, file_name, original, overrides, current, status, carrier, cost::float8 as cost, created_at, updated_at
 from preflight.bookings order by updated_at desc, id limit ${LIST_LIMIT}`;
@@ -65,12 +84,22 @@ module.exports = async (req, res) => {
       return res.status(200).json({ bookings: rows, limit: LIST_LIMIT });
     }
     if (req.method === 'POST') {
+      // Checked before the body is read.
+      if (!allowedOrigin(req.headers.origin)) return res.status(403).json({ error: 'Saving is only allowed from the CargoPass app' });
+      if (!/^application\/json\b/i.test(req.headers['content-type'] || '')) return res.status(415).json({ error: 'Send the bookings as application/json' });
       const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
+      if (!body || typeof body !== 'object' || Array.isArray(body)) throw bad('the body must be a JSON object');
+      const mode = body.mode ?? 'upsert';
+      if (!MODES.includes(mode)) throw bad('mode must be upsert or insert');
       const list = body.bookings;
       if (!Array.isArray(list) || !list.length) throw bad('bookings must be a non-empty array');
       if (list.length > MAX_ROWS) throw bad(`at most ${MAX_ROWS} bookings per request`);
       const rows = list.map(clean);
       if (new Set(rows.map(r => r.id)).size !== rows.length) throw bad('booking ids repeat in one request');
+      if (mode === 'insert') {
+        const { rows: [r] } = await db().query(INSERT_NEW, [JSON.stringify(rows)]);
+        return res.status(200).json({ saved: r.inserted, existing: r.existing });
+      }
       await db().query(UPSERT, [JSON.stringify(rows)]);
       return res.status(200).json({ saved: rows.length });
     }

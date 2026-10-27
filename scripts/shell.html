@@ -4,6 +4,23 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>CargoPass — shipment booking and error checker</title>
+<meta name="description" content="Book UK to Germany, France and Netherlands pallet freight by chat or check a booking sheet. CargoPass runs ten freight checks as you type, catches what customs and carriers would reject, and suggests the best carrier.">
+<meta name="theme-color" content="#070B16">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%234FD1FF'/><stop offset='.55' stop-color='%23FFB547'/><stop offset='1' stop-color='%234FD1FF'/></linearGradient></defs><circle cx='16' cy='16' r='16' fill='url(%23g)'/><circle cx='16' cy='16' r='7.3' fill='%23070B16'/></svg>">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="CargoPass">
+<meta property="og:title" content="CargoPass — clear the route before the truck rolls">
+<meta property="og:description" content="Book UK to Germany, France and Netherlands pallet freight by chat or check a booking sheet. CargoPass runs ten freight checks as you type, catches what customs and carriers would reject, and suggests the best carrier.">
+<meta property="og:url" content="https://cargopass-uk.vercel.app">
+<meta property="og:image" content="https://cargopass-uk.vercel.app/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="CargoPass. Clear the route before the truck rolls.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="CargoPass — clear the route before the truck rolls">
+<meta name="twitter:description" content="Book UK to Germany, France and Netherlands pallet freight by chat or check a booking sheet. CargoPass runs ten freight checks as you type, catches what customs and carriers would reject, and suggests the best carrier.">
+<meta name="twitter:image" content="https://cargopass-uk.vercel.app/og-image.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Sora:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -375,7 +392,7 @@ details > summary { cursor: pointer; font-weight: 500; padding: 6px 0; }
 .oc-strack .s-fixed { background: var(--n-pass); color: var(--n-bg); }
 .oc-strack .s-risk { background: rgba(255,181,71,.8); color: var(--n-bg); }
 .oc-strack .s-clean { background: rgba(79,209,255,.35); color: var(--n-ink); }
-.oc.no-cost .oc-totals { opacity: .35; }
+.oc.no-cost .oc-totals { display: none; }
 .oc-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font: 11.5px var(--n-mono); color: var(--n-mute); }
 .oc-legend .lg { display: inline-flex; align-items: center; gap: 6px; }
 .oc-legend .lg i { width: 14px; height: 14px; border-radius: 4px; display: grid; place-items: center; font: 600 9px var(--n-mono); font-style: normal; }
@@ -652,6 +669,19 @@ footer { max-width: 1320px; margin: 0 auto; padding: 0 24px 40px; color: var(--d
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .route .live { stroke-dashoffset: 0; }
 }
+
+/* Narrow screens: the tabs get their own row under the logo and "Start a booking", so every tab shows and nothing scrolls sideways. */
+@media (max-width: 860px) {
+  .bar { flex-wrap: wrap; gap: 6px 10px; padding: 8px 10px 6px 18px; border-radius: 22px; }
+  .bar .links { order: 3; flex: 1 0 100%; flex-wrap: wrap; justify-content: space-between; overflow: visible; gap: 2px 8px; padding-top: 4px; border-top: 1px solid var(--line-2); }
+  .bar .links button { padding: 7px 0; }
+}
+@media (max-width: 620px) {
+  .bar { padding-left: 14px; }
+  .bar .cta { display: inline-flex; padding: 7px 12px; font-size: 13px; }
+  .bar .links button { font-size: 13px; }
+  .bar .links .wide { display: none; }
+}
 </style>
 </head>
 <body>
@@ -660,7 +690,7 @@ footer { max-width: 1320px; margin: 0 auto; padding: 0 24px 40px; color: var(--d
     <div class="bar">
       <a class="logo" href="#chat"><i aria-hidden="true"></i>CargoPass</a>
       <nav class="links" role="tablist" aria-label="Sections">
-        <button id="tab-chat" role="tab" aria-controls="panel-chat">Book a shipment</button>
+        <button id="tab-chat" role="tab" aria-controls="panel-chat">Book<span class="wide"> a shipment</span></button>
         <button id="tab-file" role="tab" aria-controls="panel-file">Check a file</button>
         <button id="tab-bookings" role="tab" aria-controls="panel-bookings">Bookings</button>
         <button id="tab-rules" role="tab" aria-controls="panel-rules">How it works</button>

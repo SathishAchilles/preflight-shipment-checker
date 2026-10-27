@@ -664,13 +664,13 @@ function readExpected(sheets) {
   return m;
 }
 async function loadFiles(files) {
-  const all = []; const names = [];
+  const all = []; const names = []; const bufs = [];
   for (const f of files) {
     const buf = await f.arrayBuffer(); const csv = /\.(csv|tsv|txt)$/i.test(f.name);
-    try { const wb = XLSX.read(buf, { type: 'array', raw: csv, cellDates: false }); all.push(...sheetsFromWorkbook(wb, f.name)); names.push(f.name); }
+    try { const wb = XLSX.read(buf, { type: 'array', raw: csv, cellDates: false }); all.push(...sheetsFromWorkbook(wb, f.name)); names.push(f.name); bufs.push(buf); }
     catch (e) { showFileError(`Couldn’t read ${f.name}: ${e.message}. Upload .xlsx, .xls or .csv.`); return; }
   }
-  ingest(all, names.join(' + '), { save: true });
+  ingest(all, names.join(' + '), { save: true, fp: await fileFingerprint(bufs, $('#skip-ex').checked) });
 }
 function ingest(sheets, name, opts = {}) {
   const v = views.file;
@@ -679,13 +679,9 @@ function ingest(sheets, name, opts = {}) {
   v.data.baseline = v.data.bookings.map(b => PF.evaluate(b, { today: PF.todayISO() }));
   v.ov = {}; v.rv = {}; v.openRow = null; v.filter = 'All';
   clearAudit('file');
-  delete saveState.file;
+  delete saveState.file; pending.file.clear();
   // Uploaded files go to the shared bookings list; the built-in sample and demo files don't.
-  if (opts.save && v.data.bookings.length) {
-    const uploadId = uuid();
-    v.data.db = v.data.bookings.map(() => ({ id: uuid(), source: 'file', upload_id: uploadId, file_name: name }));
-    saveRows(v, v.data.bookings.map((b, i) => i));
-  }
+  if (opts.save && v.data.bookings.length) { v.data.fp = opts.fp || null; firstSave(v, v.data); }
   renderFile(v);
 }
 function showFileError(msg) { $('#file-results').innerHTML = ''; $('#file-results').append(h('p', { class: 'note-warn' }, msg)); }
@@ -748,7 +744,7 @@ function outcomesPanel() {
   const totals = h('div', { class: 'oc-totals' },
     h('div', { class: 'oc-tot stake' }, h('span', null, 'At stake as uploaded'), h('strong', null, '£', totStakeLo, h('em', null, '–£'), totStakeHi)),
     h('div', { class: 'oc-tot saved' }, h('span', null, 'Avoided by fixes so far'), h('strong', null, '£', totSavedLo, h('em', null, '–£'), totSavedHi)));
-  const costEmpty = h('p', { class: 'oc-empty' }, 'Type what one stopped booking costs you at each stage (storage, re-delivery, demurrage, a missed slot). No default figures.');
+  const costEmpty = h('p', { class: 'oc-empty' }, h('b', null, 'Add your costs per stop to see an estimate.'), ' Type what one stopped booking costs you at each stage (storage, re-delivery, demurrage, a missed slot). No default figures.');
   // Data table (the accessible view of every chart)
   const tbody = h('tbody');
   const tip = h('div', { class: 'oc-tip', hidden: true });
@@ -786,7 +782,8 @@ function outcomesPanel() {
     });
     const fmt = v => PF.fmtNum(v, 0);
     tween(totStakeLo, stake.low, fmt); tween(totStakeHi, stake.high, fmt); tween(totSavedLo, saved.low, fmt); tween(totSavedHi, saved.high, fmt);
-    el.classList.toggle('no-cost', !stake.lines.length);
+    // £ ranges only once a figure is typed; until then the totals are hidden behind the empty state, never shown as £0–£0.
+    el.classList.toggle('no-cost', !PF.OUTCOME_STAGES.some(st => ['low', 'high'].some(k => PF.isNum(PF.num((costs[st.id] || {})[k])))));
   }
   function update(rows) {
     o = PF.outcomes(fileData.baseline, rows.map(r => r.ev));
@@ -970,26 +967,75 @@ function savedRow(meta, original, ov) {
   return { id: meta.id, source: meta.source, booking_id: String(cur.id || '(no ID)').trim().slice(0, 80) || '(no ID)', upload_id: meta.upload_id || null, file_name: meta.file_name || null,
     original, overrides: ov || null, current: cur, status: ev.status, carrier: c ? c.carrier : null, cost: c ? c.cost : null };
 }
-async function postRows(rows) {
+// mode 'insert' adds only rows that aren't saved yet and returns the saved fixes of the ones that are; the default updates them.
+async function postRows(rows, mode) {
+  const out = { saved: 0, existing: [] };
   for (let i = 0; i < rows.length; i += 500) {
-    const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookings: rows.slice(i, i + 500) }) });
-    if (!r.ok) { let msg = `error ${r.status}`; try { msg = (await r.json()).error || msg; } catch (e) {} throw new Error(msg); }
+    const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(mode ? { mode, bookings: rows.slice(i, i + 500) } : { bookings: rows.slice(i, i + 500) }) });
+    let res = null; try { res = await r.json(); } catch (e) {}
+    if (!r.ok) throw new Error((res && res.error) || `error ${r.status}`);
+    out.saved += (res && res.saved) || 0; if (res && Array.isArray(res.existing)) out.existing.push(...res.existing);
   }
+  return out;
+}
+// The same file uploaded again gets the same row ids: a SHA-256 of its bytes (and the example-row setting, which shifts
+// the rows), then one id per row from that. Without crypto.subtle (an insecure page) ids are random, as before.
+const hex = buf => [...new Uint8Array(buf)].map(x => x.toString(16).padStart(2, '0')).join('');
+async function fileFingerprint(bufs, skipExample) {
+  try { if (!crypto.subtle) return null; const hs = await Promise.all(bufs.map(b => crypto.subtle.digest('SHA-256', b))); return `${hs.map(hex).join('+')}:${skipExample ? 'skip-example' : 'keep-example'}`; }
+  catch (e) { return null; }
+}
+async function uuidOf(text) {
+  const b = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)));
+  b[6] = (b[6] & 0x0f) | 0x80; b[8] = (b[8] & 0x3f) | 0x80; // UUID version 8 (custom), RFC 4122 variant
+  const x = hex(b.slice(0, 16)); return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20)}`;
+}
+// First save of an uploaded file. Rows already on Bookings are left alone, and the fixes saved there are brought into
+// this view (with any fix made here since on top), so uploading the file again never undoes them.
+function firstSave(v, data) {
+  data.needsFirst = false;
+  data.firstSave = (async () => {
+    if (!data.db) {
+      const fp = data.fp, upload = fp ? await uuidOf(fp) : uuid();
+      const ids = await Promise.all(data.bookings.map((b, i) => (fp ? uuidOf(`${fp}:${i}`) : uuid())));
+      data.db = ids.map(id => ({ id, source: 'file', upload_id: upload, file_name: data.name }));
+    }
+    let res;
+    try { res = await track('file', postRows(data.bookings.map((b, i) => savedRow(data.db[i], b, v.ov[i])), 'insert')); }
+    catch (e) { data.needsFirst = true; return; }
+    if (v.data !== data) return;
+    const at = Object.fromEntries(data.db.map((d, i) => [d.id, i])); let fixes = 0;
+    res.existing.forEach(x => {
+      const i = at[x.id]; if (i == null || !x.overrides) return;
+      const mine = v.ov[i]; fixes++;
+      v.ov[i] = mine ? { patch: { ...(x.overrides.patch || {}), ...(mine.patch || {}) }, items: { ...(x.overrides.items || {}), ...(mine.items || {}) } } : x.overrides;
+      if (mine) pending.file.add(i);
+    });
+    const old = res.existing.length;
+    setSave('file', 'saved', !old ? '' : !res.saved ? `Already saved on Bookings${fixes ? ` · showing the fixes saved there` : ''}` : `Saved ${res.saved} new · ${old} already on Bookings`);
+    if (fixes && (location.hash.slice(1) || 'chat') === 'file') renderFile(v);
+  })();
 }
 // Save state per list ('file', 'bookings', 'chat'), shown next to the list's name.
 const saveState = {};
 function saveNote(key) { const st = saveState[key.name || key]; return h('span', { class: 'savenote s-' + (st ? st.state : 'none'), 'data-save': key.name || key }, saveText(st)); }
-function saveText(st) { return !st ? '' : st.state === 'saving' ? '· Saving…' : st.state === 'saved' ? '· Saved to Bookings' : `· Not saved (${st.msg}) — it will try again with your next change`; }
+function saveText(st) { return !st ? '' : st.state === 'saving' ? '· Saving…' : st.state === 'saved' ? `· ${st.msg || 'Saved to Bookings'}` : `· Not saved (${st.msg}) — it will try again with your next change`; }
 function setSave(key, state, msg) { saveState[key] = { state, msg }; document.querySelectorAll(`[data-save="${key}"]`).forEach(el => { el.className = 'savenote s-' + state; el.textContent = saveText(saveState[key]); }); }
 function track(key, p) { inflight.add(p); setSave(key, 'saving'); p.then(() => setSave(key, 'saved'), e => setSave(key, 'error', e.message || 'offline')).finally(() => inflight.delete(p)); return p; }
 // Rows of a list waiting to be saved; changes within 300 ms go up together. Rows that failed stay queued for the next try.
 const pending = { file: new Set(), bookings: new Set() }; const timers = {};
 function saveRows(v, idxs) {
-  if (!v.data || !v.data.db) return;
+  if (!v.data || !(v.data.db || v.data.firstSave)) return;
   idxs.forEach(i => pending[v.name].add(i));
   clearTimeout(timers[v.name]);
-  timers[v.name] = setTimeout(() => {
-    const data = v.data, idx = [...pending[v.name]]; pending[v.name].clear();
+  timers[v.name] = setTimeout(async () => {
+    const data = v.data;
+    // A file's fixes wait for its first save (which may bring in fixes already saved on Bookings); a failed one is retried first.
+    if (data.needsFirst) firstSave(v, data);
+    if (data.firstSave) await data.firstSave;
+    if (v.data !== data || !data.db || data.needsFirst) return;
+    const idx = [...pending[v.name]]; pending[v.name].clear();
+    if (!idx.length) return;
     const rows = idx.map(i => savedRow(data.db[i], data.bookings[i], v.ov[i]));
     track(v.name, postRows(rows)).catch(() => { if (v.data === data) idx.forEach(i => pending[v.name].add(i)); });
   }, 300);

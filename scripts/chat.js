@@ -63,6 +63,41 @@ function chatDate(text, today) {
   return null;
 }
 
+// ---------- Seller names ----------
+// "seller: X", "seller is X", "seller X", "business name X", "company X", "our company is X", "trading as X".
+const SELLER_LABEL = /^\s*(?:(?:the|our|my)\s+)?(?:seller(?:'s)?(?:\s+name)?|business(?:\s+name)?|company(?:\s+name)?|trading\s+name|brand(?:\s+name)?|trading\s+as|name)\s*(?:is\b|:|=|-|–|—)?\s*/i;
+const SELLER_WORDS = ['seller', 'company', 'business', 'name', 'brand'];
+// A seller name that is obviously not one: blank, punctuation or digits only, a filler word, or a cut-off label ("Sell", "Comp").
+function junkSeller(c) {
+  const t = String(c || '').trim().replace(/[.,!?:;]+$/, '');
+  if (t.length < 2 || !/[a-z]/i.test(t)) return true;
+  if (/^(?:yes|yeah|yep|no|nope|ok|okay|sure|hi|hello|hey|thanks|thank you|cheers|test|testing|idk|tbc|tbd|same|none|n\/a|na|unknown|ltd|limited|plc|inc|llc|co|the|me|us|we|it)$/i.test(t)) return true;
+  const w = t.toLowerCase();
+  return !/\s/.test(w) && SELLER_WORDS.some(x => x.startsWith(w) || x + 's' === w || x + ':' === w);
+}
+// The name after a seller label anywhere in the message, up to the end of its clause.
+function sellerLabel(raw) {
+  const re = /(?:^|[\s,.;!?(])(?:(?:the|our|my)\s+)?(seller(?:'s)?(?:\s+name)?|business\s+name|company\s+name|trading\s+name|trading\s+as|company|business|brand(?:\s+name)?)(\s*(?:is\b|:|=|–|—|-)\s*|\s+)([^,;!?\n]+)/gi;
+  let m;
+  while ((m = re.exec(raw))) {
+    const sep = m[2].trim(), lbl = m[1].toLowerCase();
+    let v = m[3];
+    // A full stop ends the name, except after an initial or a short form ("J. Smith", "Co. Ltd").
+    const stop = [...v.matchAll(/\.(?:\s+|$)/g)].find(d => !/(?:^|\s)(?:[A-Z]|Co|St|Mr|Mrs|Ms|Dr|Bros)$/.test(v.slice(0, d.index)));
+    if (stop) v = v.slice(0, stop.index);
+    v = v.replace(/\s+(?:from|to|ready|going|shipping|sending|with|and we|we|i|at|for|in|based|who|which|that|is|are|has|have|will|would|needs?|wants?|pays?|sends?|ships?)\b.*$/i, '').trim();
+    v = v.replace(/^(?:called|named)\s+/i, '');
+    if (!v) continue;
+    // Without ":" or "is", only a capitalised name counts ("company Acme Ltd", not "company needs it fast").
+    if (!sep && !/^[A-Z0-9&]/.test(v)) continue;
+    if (!sep && /^(?:company|business)$/.test(lbl) && /^(?:is|are|was|will|has|have|needs?|wants?|sends?|ships?)\b/i.test(v)) continue;
+    if (/^(?:is|are|was|will|has|have|needs?|wants?|pays?|sends?|ships?|address|details?|name)\b/i.test(v)) continue;
+    if (v.length > 80) v = v.slice(0, 80).trim();
+    return v;
+  }
+  return null;
+}
+
 // ---------- Parse one message into a patch ----------
 function parseMessage(text, st, today) {
   // Curly quotes (as typed on phones and used in the app's own chips) read like straight ones.
@@ -215,14 +250,62 @@ function parseMessage(text, st, today) {
   // Remove items
   takeAll(S, /\b(?:remove|drop|delete|take out|cancel|exclude|get rid of)\s+(?:the\s+|all\s+(?:the\s+)?|those\s+)?([a-z][a-z \-]{2,40})/i, m => { if (/pallet/i.test(m[1])) return false; const i = itemByName(items, m[1]); if (i != null) P.removeItems.push(i); else return false; });
 
-  // Cities / countries
-  const destHits = Object.keys(CITY_COUNTRY).map(c => { const r = new RegExp(`\\b${c}\\b`, 'i').exec(raw); return r ? { c, i: r.index } : null; }).filter(Boolean).sort((a, b) => a.i - b.i);
-  if (destHits.length) P.booking.destCity = destHits[destHits.length - 1].c;
-  const orgHit = ORIGIN_CITIES.find(c => new RegExp(`\\b${c}\\b`, 'i').test(raw));
-  if (orgHit) P.booking.originCity = orgHit;
-  for (const [c, ctry] of Object.entries(OTHER_DEST)) if (new RegExp(`\\b${c}\\b`, 'i').test(low)) { P.notes.push(`${titleCase(c)} isn't on a carrier route. In ${ctry} we deliver to ${Object.keys(CITY_COUNTRY).filter(k => CITY_COUNTRY[k] === ctry).join(' or ')} — which is closest?`); P.suggestCountry = ctry; }
-  for (const c of OTHER_UK) if (new RegExp(`\\b${c}\\b`, 'i').test(low)) P.notes.push(`We collect from ${ORIGIN_CITIES.join(', ')} only — not ${titleCase(c)}. Which of those is nearest?`);
-  for (const c of OTHER_COUNTRIES) if (new RegExp(`\\bto\\s+(?:the\\s+)?${c}\\b`, 'i').test(low)) P.notes.push(`Shipping to ${titleCase(c)} isn't available — routes run from the UK to Germany, France or the Netherlands.`);
+  // Cities / countries. A city being replaced ("Lyon not Paris", "instead of Paris", "Paris to Lyon") is dropped, and so is a
+  // city named for the wrong end of the trip; the last city left wins. Whatever was named but not used is said back.
+  const b0 = st.booking, DESTS = Object.keys(CITY_COUNTRY);
+  const UKS = ORIGIN_CITIES.concat(OTHER_UK.map(titleCase)), EUS = DESTS.concat(Object.keys(OTHER_DEST).map(titleCase));
+  const alt = list => list.map(c => c.replace(/\s+/g, '\\s+')).join('|');
+  const WANT_DEST = '(?:deliver(?:y|ing)?(?:\\s+it)?\\s+to|destination\\s+(?:to|is|should be|:)|change\\s+(?:the\\s+)?destination\\s+to|send\\s+it\\s+to|ship\\s+it\\s+to|going\\s+to)';
+  const WANT_ORG = '(?:collect(?:ion|ing)?(?:\\s+it)?\\s+from|pick(?:\\s+it)?[- ]?up\\s+from|collection(?:\\s+point)?\\s+(?:to|is|:)|origin\\s+(?:to|is|:))';
+  const hitsOf = (list, own) => list.flatMap(c => { const out = [], g = new RegExp(`\\b${c.replace(/\s+/g, '\\s+')}\\b`, 'gi'); let m; while ((m = g.exec(raw))) out.push({ c, i: m.index, end: m.index + m[0].length }); return out; })
+    .sort((x, y) => x.i - y.i).map(h => {
+      const before = raw.slice(Math.max(0, h.i - 40), h.i), after = raw.slice(h.end, h.end + 40);
+      const dropped = /\b(?:not|instead of|rather than|no longer|isn'?t|never|swap|replace)\s+(?:(?:to|from|in|for|the|it|deliver(?:ing)?|send(?:ing)?|ship(?:ping)?|collect(?:ing)?)\s+){0,2}$/i.test(before)
+        || new RegExp(`^\\s*(?:to|→|->|for|with)\\s+(?:the\\s+)?(?:${alt(own)})\\b`, 'i').test(after);
+      const asOther = own === EUS ? new RegExp(`${WANT_ORG}\\s+(?:the\\s+)?$`, 'i').test(before) || (/\bfrom\s+$/i.test(before) && /^\s*instead\b/i.test(after)) : new RegExp(`${WANT_DEST}\\s+(?:the\\s+)?$`, 'i').test(before);
+      return { ...h, dropped, wrongEnd: !dropped && asOther };
+    });
+  const destAll = hitsOf(EUS, EUS), orgAll = hitsOf(UKS, UKS);
+  const destKept = destAll.filter(h => !h.dropped && !h.wrongEnd && DESTS.includes(h.c)), orgKept = orgAll.filter(h => !h.dropped && !h.wrongEnd && ORIGIN_CITIES.includes(h.c));
+  if (destKept.length) P.booking.destCity = destKept[destKept.length - 1].c;
+  if (orgKept.length) P.booking.originCity = orgKept[orgKept.length - 1].c;
+  const stays = (label, v) => (v ? ` For now ${label} stays ${v}.` : '');
+  const keepD = P.booking.destCity ? '' : stays('Deliver to', b0.destCity), keepO = P.booking.originCity ? '' : stays('Collect from', b0.originCity);
+  const curDest = P.booking.destCity || b0.destCity, curOrg = P.booking.originCity || b0.originCity;
+  const uniq = a => [...new Set(a)];
+  const unusedDest = uniq(destKept.filter(h => h.c !== curDest).map(h => h.c)), unusedOrg = uniq(orgKept.filter(h => h.c !== curOrg).map(h => h.c));
+  if (unusedDest.length) P.notes.push(`You mentioned ${unusedDest.join(' and ')} too — I've used ${curDest} for Deliver to. Say “deliver to ${unusedDest[0]}” if that's the one.`);
+  if (unusedOrg.length) P.notes.push(`You mentioned ${unusedOrg.join(' and ')} too — I've used ${curOrg} for Collect from. Say “collect from ${unusedOrg[0]}” if that's the one.`);
+  uniq(destAll.filter(h => !h.dropped && !h.wrongEnd && !DESTS.includes(h.c)).map(h => h.c)).forEach(c => { const ctry = OTHER_DEST[c.toLowerCase()]; P.notes.push(`${c} isn't on a carrier route. In ${ctry} we deliver to ${DESTS.filter(k => CITY_COUNTRY[k] === ctry).join(' or ')} — which is closest?${keepD}`); P.suggestCountry = ctry; });
+  uniq(orgAll.filter(h => !h.dropped && !h.wrongEnd && !ORIGIN_CITIES.includes(h.c)).map(h => h.c)).forEach(c => P.notes.push(`We collect from ${ORIGIN_CITIES.join(', ')} only — not ${c}. Which of those is nearest?${keepO}`));
+  uniq(orgAll.filter(h => h.wrongEnd).map(h => h.c)).forEach(c => P.notes.push(`${c} is in the UK, so it can only be where we collect from — we deliver to ${DESTS.join(', ')}.${keepD}`));
+  uniq(destAll.filter(h => h.wrongEnd).map(h => h.c)).forEach(c => P.notes.push(`${c} isn't in the UK — we collect from ${ORIGIN_CITIES.join(', ')} only.${keepO}`));
+  // A place we don't know at all, asked for as the new delivery city or collection point ("make it Madrid not Paris").
+  const NOT_PLACE = /^(?:it|its|that|this|them|there|here|you|the|one|two|three|some|more|less|fewer|cheaper|cheapest|faster|fastest|quicker|quickest|balanced|reliable|carrier|road|pallets?|cartons?|boxes|tomorrow|today|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next|warehouses?|business|office|shop|store|amazon|customers?|clients?|address|depot|site|instead|please|now|then|asap|ready|priority|economy|standard|express|our|my|your|their|his|her|we|be|is|from|to|but|and|or|of|in|for|with|not|actually|sorry)$/i;
+  const named = [...EUS, ...UKS].map(x => x.toLowerCase());
+  const unknownPlace = (re, dest) => {
+    const g = new RegExp(re.source, 'gi'); let m;
+    while ((m = g.exec(raw))) {
+      const w = m[1].trim();
+      if (NOT_PLACE.test(w.split(/\s+/)[0]) || named.includes(w.toLowerCase()) || normCountry(w) || OTHER_COUNTRIES.includes(w.toLowerCase())) continue;
+      P.notes.push(dest ? `I can't deliver to ${titleCase(w)} — we deliver to ${DESTS.join(', ')}.${keepD}` : `I can't collect from ${titleCase(w)} — we collect from ${ORIGIN_CITIES.join(', ')}.${keepO}`); return true;
+    }
+    return false;
+  };
+  const WORD = "([A-Za-z][A-Za-z'-]{2,}(?:\\s+(?!(?:instead|not|rather|please|to|from|but)\\b)[A-Za-z][A-Za-z'-]+)?)", END = '(?=\\s*(?:instead\\b|not\\b|rather\\b|please\\b|[,.;!?]|$))';
+  if (!P.booking.destCity) {
+    unknownPlace(new RegExp(`\\b${WORD}\\s*,?\\s+(?:not|instead of|rather than)\\s+(?:to\\s+)?(?:${alt(EUS)})\\b`, 'i'), true)
+      || unknownPlace(new RegExp(`\\bnot\\s+(?:to\\s+)?(?:${alt(EUS)})\\s*[,;–—-]?\\s*(?:but\\s+)?(?:to\\s+)?${WORD}${END}`, 'i'), true)
+      || unknownPlace(new RegExp(`\\b(?:${WANT_DEST}|switch(?:\\s+it)?\\s+to|change\\s+it\\s+to)\\s+(?:the\\s+)?${WORD}${END}`, 'i'), true);
+  }
+  if (!P.booking.originCity) {
+    unknownPlace(new RegExp(`\\b${WORD}\\s*,?\\s+(?:not|instead of|rather than)\\s+(?:from\\s+)?(?:${alt(UKS)})\\b`, 'i'), false)
+      || unknownPlace(new RegExp(`\\b(?:${WANT_ORG}|from)\\s+${WORD}\\s+instead\\b`, 'i'), false);
+  }
+  // "not Paris" with nothing in its place
+  if (!P.booking.destCity && b0.destCity && destAll.some(h => h.dropped && h.c === b0.destCity) && !P.notes.length) P.notes.push(`Noted — not ${b0.destCity}. Which city should it go to instead? We deliver to ${DESTS.join(', ')}.`);
+  if (!P.booking.originCity && b0.originCity && orgAll.some(h => h.dropped && h.c === b0.originCity) && !P.notes.length) P.notes.push(`Noted — not ${b0.originCity}. Where should we collect it from instead? We collect from ${ORIGIN_CITIES.join(', ')}.`);
+  for (const c of OTHER_COUNTRIES) if (new RegExp(`\\b(?:to|make it)\\s+(?:the\\s+)?${c}\\b`, 'i').test(low)) P.notes.push(`Shipping to ${titleCase(c)} isn't available — routes run from the UK to Germany, France or the Netherlands.${keepD}`);
   if (!P.booking.destCity) { const m = /\b(?:to|into|in|for)\s+(?:the\s+)?(germany|france|netherlands|holland)\b/i.exec(raw); if (m) P.booking.destCountry = normCountry(m[1]); }
 
   // Destination type
@@ -246,18 +329,22 @@ function parseMessage(text, st, today) {
     if (p) { P.booking.priority = p; if (!('carrierOverride' in P.booking)) P.booking.carrierOverride = null; }
   }
 
-  // Seller name
+  // Seller name. A labelled name ("seller: Acme", "business name Acme Ltd") is trusted even as one word; elsewhere a name
+  // needs two words or a company word. A lone fragment ("Sell", "Seller", "Ltd") is never taken as the name.
   {
     const cands = [];
     const NAME = "((?:[A-Z][\\w&'-]*|&)(?:\\s+(?:[A-Z][\\w&'-]*|&|and|of|the))*)";
     const pats = [new RegExp(`\\b(?:[Cc]ompany|[Bb]usiness|[Ss]eller|[Bb]rand|[Ss]hop)(?:\\s+name)?\\s+is\\s+${NAME}`), new RegExp(`\\b(?:[Oo]n behalf of|[Tt]his is|[Ww]e are|[Ww]e're|[Ii]'?m|I am|[Ii]t's|[Ss]eller is)\\s+(?:[A-Z][a-z]+\\s+from\\s+)?${NAME}`), new RegExp(`\\bfrom\\s+${NAME}`)];
     for (const re of pats) { const m = re.exec(raw); if (m) cands.push(m[1].trim()); }
-    const bad = c => !c || ORIGIN_CITIES.concat(Object.keys(CITY_COUNTRY)).some(x => x.toLowerCase() === c.toLowerCase()) || normCountry(c) || /^(I|We|Hi|Hello|Carrier|Road|HS|The|Amazon|UK|EU|GBP|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$/i.test(c) || /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/.test(c) && c.split(' ').length === 1;
+    const bad = c => !c || junkSeller(c) || ORIGIN_CITIES.concat(Object.keys(CITY_COUNTRY)).some(x => x.toLowerCase() === c.toLowerCase()) || normCountry(c) || /^(I|We|Hi|Hello|Carrier|Road|HS|The|Amazon|UK|EU|GBP|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$/i.test(c) || /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/.test(c) && c.split(' ').length === 1;
     let pick = null;
+    const label = sellerLabel(raw);
     const mFrom = /\b(?:i'?m|I am|this is)\s+[A-Z][a-z]+\s+from\s+((?:[A-Z][\w&'-]*|&)(?:\s+(?:[A-Z][\w&'-]*|&|and|of|the))*)/.exec(raw);
-    if (mFrom && !bad(mFrom[1].trim())) pick = mFrom[1].trim();
+    if (label && !bad(label)) pick = label;
+    else if (mFrom && !bad(mFrom[1].trim())) pick = mFrom[1].trim();
     else pick = cands.find(c => !bad(c) && (c.split(/\s+/).length > 1 || /ltd|limited|co\b|goods|trading|supplies|store|shop/i.test(c))) || null;
     if (pick) P.booking.seller = pick.replace(/[.,]+$/, '').replace(/\s+(?:in|based|and)$/i, '');
+    else if (label) P.sellerJunk = label;
   }
 
   // "don't know" answers to the pending question
@@ -279,7 +366,10 @@ function parseMessage(text, st, today) {
     if (f === 'destType' && !P.booking.destType) { const v = normDestType(raw); if (v) P.booking.destType = v; }
     if (f === 'appointment' && !P.booking.appointment) { if (/^\s*(y|yes|yep|yeah|yup|booked|it is|we have|done|sure)\b/i.test(raw)) P.booking.appointment = 'Yes'; else if (/^\s*(n|no|nope|not yet|nah|we don'?t|haven'?t)\b/i.test(raw)) P.booking.appointment = 'No'; }
     if (f === 'priority' && !P.booking.priority) { const v = normPriority(raw); if (v) { P.booking.priority = v; P.booking.carrierOverride = null; } }
-    if (f === 'seller' && !P.booking.seller) { const v = raw.trim().replace(/^(?:it'?s|we are|we're|i'?m|the seller is|seller is|company is|our company is|this is)\s+/i, '').replace(/[.!]+$/, ''); if (v && v.length <= 80) P.booking.seller = v; }
+    if (f === 'seller' && !P.booking.seller && !P.intents.length) {
+      const v = raw.trim().replace(/^(?:it'?s|we are|we're|i'?m|this is|it'?s called|we'?re called)\s+/i, '').replace(SELLER_LABEL, '').replace(/[.!]+$/, '').trim();
+      if (v && v.length <= 80 && !junkSeller(v)) P.booking.seller = v; else if (!P.sellerJunk) P.sellerJunk = v || raw.trim();
+    }
     if (f === 'items' && !segs.length && !items.length && !pending.length && !Object.keys(P.booking).length && !P.palletsDelta) { const v = raw.trim().replace(/^(?:we(?:'re| are)? (?:sending|shipping)|sending|shipping|it'?s|they'?re)\s+/i, '').replace(/[.!]+$/, ''); if (v && !/^\d+$/.test(v) && v.length <= 80 && !dunno) pending.push({ ref: 'new', fields: { description: titleCase(v.charAt(0)) + v.slice(1) } }); }
   }
   P.items = pending.filter(p => Object.keys(p.fields).length);
@@ -449,6 +539,7 @@ function turn(stIn, text, today) {
   reply.changes = applyPatch(st, P);
   if (P.material && st.booking.items[P.material.item]) { const it = st.booking.items[P.material.item]; it.materialAsked = true; if (P.material.value) { it.material = P.material.value; reply.notes.push(`Noted: ${it.description} — ${P.material.value}.`); } }
   P.hsUnknown.forEach(i => { const it = st.booking.items[i]; if (!it || it.hs) return; const h = hsSuggestFor(it), what = h && (h.label || PF.hsShort((PF.hsLookup(h.codes[0]) || {}).desc)); reply.notes.push(h && h.level === 'hs6' ? `No problem. For “${it.description}” the suggested HS code is ${h.codes[0]} (${what}). Say “use ${h.codes[0]}” to accept it — worth a quick check on the UK Trade Tariff. Until then R-01 stays red.` : h ? `No problem. For “${it.description}” the code is probably one of ${h.codes.slice(0, 4).join(', ')}. Say “use” and the one that fits — check it on the UK Trade Tariff. Until then R-01 stays red.` : `No problem — I couldn’t suggest a code for “${it.description}”. Look it up on the UK Trade Tariff (trade-tariff.service.gov.uk); until then R-01 stays red.`); });
+  if (P.sellerJunk && !P.booking.seller) reply.notes.push(`“${P.sellerJunk}” doesn't look like a business name, so I haven't used it. What name should go on the paperwork as the seller?`);
   reply.derived = deriveItems(st.booking);
   const miss = missing(st);
   if (miss.length) {

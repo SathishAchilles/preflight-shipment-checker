@@ -4,6 +4,23 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>CargoPass — shipment booking and error checker</title>
+<meta name="description" content="Book UK to Germany, France and Netherlands pallet freight by chat or check a booking sheet. CargoPass runs ten freight checks as you type, catches what customs and carriers would reject, and suggests the best carrier.">
+<meta name="theme-color" content="#070B16">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%234FD1FF'/><stop offset='.55' stop-color='%23FFB547'/><stop offset='1' stop-color='%234FD1FF'/></linearGradient></defs><circle cx='16' cy='16' r='16' fill='url(%23g)'/><circle cx='16' cy='16' r='7.3' fill='%23070B16'/></svg>">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="CargoPass">
+<meta property="og:title" content="CargoPass — clear the route before the truck rolls">
+<meta property="og:description" content="Book UK to Germany, France and Netherlands pallet freight by chat or check a booking sheet. CargoPass runs ten freight checks as you type, catches what customs and carriers would reject, and suggests the best carrier.">
+<meta property="og:url" content="https://cargopass-uk.vercel.app">
+<meta property="og:image" content="https://cargopass-uk.vercel.app/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="CargoPass. Clear the route before the truck rolls.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="CargoPass — clear the route before the truck rolls">
+<meta name="twitter:description" content="Book UK to Germany, France and Netherlands pallet freight by chat or check a booking sheet. CargoPass runs ten freight checks as you type, catches what customs and carriers would reject, and suggests the best carrier.">
+<meta name="twitter:image" content="https://cargopass-uk.vercel.app/og-image.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Sora:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -375,7 +392,7 @@ details > summary { cursor: pointer; font-weight: 500; padding: 6px 0; }
 .oc-strack .s-fixed { background: var(--n-pass); color: var(--n-bg); }
 .oc-strack .s-risk { background: rgba(255,181,71,.8); color: var(--n-bg); }
 .oc-strack .s-clean { background: rgba(79,209,255,.35); color: var(--n-ink); }
-.oc.no-cost .oc-totals { opacity: .35; }
+.oc.no-cost .oc-totals { display: none; }
 .oc-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font: 11.5px var(--n-mono); color: var(--n-mute); }
 .oc-legend .lg { display: inline-flex; align-items: center; gap: 6px; }
 .oc-legend .lg i { width: 14px; height: 14px; border-radius: 4px; display: grid; place-items: center; font: 600 9px var(--n-mono); font-style: normal; }
@@ -652,6 +669,19 @@ footer { max-width: 1320px; margin: 0 auto; padding: 0 24px 40px; color: var(--d
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .route .live { stroke-dashoffset: 0; }
 }
+
+/* Narrow screens: the tabs get their own row under the logo and "Start a booking", so every tab shows and nothing scrolls sideways. */
+@media (max-width: 860px) {
+  .bar { flex-wrap: wrap; gap: 6px 10px; padding: 8px 10px 6px 18px; border-radius: 22px; }
+  .bar .links { order: 3; flex: 1 0 100%; flex-wrap: wrap; justify-content: space-between; overflow: visible; gap: 2px 8px; padding-top: 4px; border-top: 1px solid var(--line-2); }
+  .bar .links button { padding: 7px 0; }
+}
+@media (max-width: 620px) {
+  .bar { padding-left: 14px; }
+  .bar .cta { display: inline-flex; padding: 7px 12px; font-size: 13px; }
+  .bar .links button { font-size: 13px; }
+  .bar .links .wide { display: none; }
+}
 </style>
 </head>
 <body>
@@ -660,7 +690,7 @@ footer { max-width: 1320px; margin: 0 auto; padding: 0 24px 40px; color: var(--d
     <div class="bar">
       <a class="logo" href="#chat"><i aria-hidden="true"></i>CargoPass</a>
       <nav class="links" role="tablist" aria-label="Sections">
-        <button id="tab-chat" role="tab" aria-controls="panel-chat">Book a shipment</button>
+        <button id="tab-chat" role="tab" aria-controls="panel-chat">Book<span class="wide"> a shipment</span></button>
         <button id="tab-file" role="tab" aria-controls="panel-file">Check a file</button>
         <button id="tab-bookings" role="tab" aria-controls="panel-bookings">Bookings</button>
         <button id="tab-rules" role="tab" aria-controls="panel-rules">How it works</button>
@@ -2049,6 +2079,41 @@ function chatDate(text, today) {
   return null;
 }
 
+// ---------- Seller names ----------
+// "seller: X", "seller is X", "seller X", "business name X", "company X", "our company is X", "trading as X".
+const SELLER_LABEL = /^\s*(?:(?:the|our|my)\s+)?(?:seller(?:'s)?(?:\s+name)?|business(?:\s+name)?|company(?:\s+name)?|trading\s+name|brand(?:\s+name)?|trading\s+as|name)\s*(?:is\b|:|=|-|–|—)?\s*/i;
+const SELLER_WORDS = ['seller', 'company', 'business', 'name', 'brand'];
+// A seller name that is obviously not one: blank, punctuation or digits only, a filler word, or a cut-off label ("Sell", "Comp").
+function junkSeller(c) {
+  const t = String(c || '').trim().replace(/[.,!?:;]+$/, '');
+  if (t.length < 2 || !/[a-z]/i.test(t)) return true;
+  if (/^(?:yes|yeah|yep|no|nope|ok|okay|sure|hi|hello|hey|thanks|thank you|cheers|test|testing|idk|tbc|tbd|same|none|n\/a|na|unknown|ltd|limited|plc|inc|llc|co|the|me|us|we|it)$/i.test(t)) return true;
+  const w = t.toLowerCase();
+  return !/\s/.test(w) && SELLER_WORDS.some(x => x.startsWith(w) || x + 's' === w || x + ':' === w);
+}
+// The name after a seller label anywhere in the message, up to the end of its clause.
+function sellerLabel(raw) {
+  const re = /(?:^|[\s,.;!?(])(?:(?:the|our|my)\s+)?(seller(?:'s)?(?:\s+name)?|business\s+name|company\s+name|trading\s+name|trading\s+as|company|business|brand(?:\s+name)?)(\s*(?:is\b|:|=|–|—|-)\s*|\s+)([^,;!?\n]+)/gi;
+  let m;
+  while ((m = re.exec(raw))) {
+    const sep = m[2].trim(), lbl = m[1].toLowerCase();
+    let v = m[3];
+    // A full stop ends the name, except after an initial or a short form ("J. Smith", "Co. Ltd").
+    const stop = [...v.matchAll(/\.(?:\s+|$)/g)].find(d => !/(?:^|\s)(?:[A-Z]|Co|St|Mr|Mrs|Ms|Dr|Bros)$/.test(v.slice(0, d.index)));
+    if (stop) v = v.slice(0, stop.index);
+    v = v.replace(/\s+(?:from|to|ready|going|shipping|sending|with|and we|we|i|at|for|in|based|who|which|that|is|are|has|have|will|would|needs?|wants?|pays?|sends?|ships?)\b.*$/i, '').trim();
+    v = v.replace(/^(?:called|named)\s+/i, '');
+    if (!v) continue;
+    // Without ":" or "is", only a capitalised name counts ("company Acme Ltd", not "company needs it fast").
+    if (!sep && !/^[A-Z0-9&]/.test(v)) continue;
+    if (!sep && /^(?:company|business)$/.test(lbl) && /^(?:is|are|was|will|has|have|needs?|wants?|sends?|ships?)\b/i.test(v)) continue;
+    if (/^(?:is|are|was|will|has|have|needs?|wants?|pays?|sends?|ships?|address|details?|name)\b/i.test(v)) continue;
+    if (v.length > 80) v = v.slice(0, 80).trim();
+    return v;
+  }
+  return null;
+}
+
 // ---------- Parse one message into a patch ----------
 function parseMessage(text, st, today) {
   // Curly quotes (as typed on phones and used in the app's own chips) read like straight ones.
@@ -2201,14 +2266,62 @@ function parseMessage(text, st, today) {
   // Remove items
   takeAll(S, /\b(?:remove|drop|delete|take out|cancel|exclude|get rid of)\s+(?:the\s+|all\s+(?:the\s+)?|those\s+)?([a-z][a-z \-]{2,40})/i, m => { if (/pallet/i.test(m[1])) return false; const i = itemByName(items, m[1]); if (i != null) P.removeItems.push(i); else return false; });
 
-  // Cities / countries
-  const destHits = Object.keys(CITY_COUNTRY).map(c => { const r = new RegExp(`\\b${c}\\b`, 'i').exec(raw); return r ? { c, i: r.index } : null; }).filter(Boolean).sort((a, b) => a.i - b.i);
-  if (destHits.length) P.booking.destCity = destHits[destHits.length - 1].c;
-  const orgHit = ORIGIN_CITIES.find(c => new RegExp(`\\b${c}\\b`, 'i').test(raw));
-  if (orgHit) P.booking.originCity = orgHit;
-  for (const [c, ctry] of Object.entries(OTHER_DEST)) if (new RegExp(`\\b${c}\\b`, 'i').test(low)) { P.notes.push(`${titleCase(c)} isn't on a carrier route. In ${ctry} we deliver to ${Object.keys(CITY_COUNTRY).filter(k => CITY_COUNTRY[k] === ctry).join(' or ')} — which is closest?`); P.suggestCountry = ctry; }
-  for (const c of OTHER_UK) if (new RegExp(`\\b${c}\\b`, 'i').test(low)) P.notes.push(`We collect from ${ORIGIN_CITIES.join(', ')} only — not ${titleCase(c)}. Which of those is nearest?`);
-  for (const c of OTHER_COUNTRIES) if (new RegExp(`\\bto\\s+(?:the\\s+)?${c}\\b`, 'i').test(low)) P.notes.push(`Shipping to ${titleCase(c)} isn't available — routes run from the UK to Germany, France or the Netherlands.`);
+  // Cities / countries. A city being replaced ("Lyon not Paris", "instead of Paris", "Paris to Lyon") is dropped, and so is a
+  // city named for the wrong end of the trip; the last city left wins. Whatever was named but not used is said back.
+  const b0 = st.booking, DESTS = Object.keys(CITY_COUNTRY);
+  const UKS = ORIGIN_CITIES.concat(OTHER_UK.map(titleCase)), EUS = DESTS.concat(Object.keys(OTHER_DEST).map(titleCase));
+  const alt = list => list.map(c => c.replace(/\s+/g, '\\s+')).join('|');
+  const WANT_DEST = '(?:deliver(?:y|ing)?(?:\\s+it)?\\s+to|destination\\s+(?:to|is|should be|:)|change\\s+(?:the\\s+)?destination\\s+to|send\\s+it\\s+to|ship\\s+it\\s+to|going\\s+to)';
+  const WANT_ORG = '(?:collect(?:ion|ing)?(?:\\s+it)?\\s+from|pick(?:\\s+it)?[- ]?up\\s+from|collection(?:\\s+point)?\\s+(?:to|is|:)|origin\\s+(?:to|is|:))';
+  const hitsOf = (list, own) => list.flatMap(c => { const out = [], g = new RegExp(`\\b${c.replace(/\s+/g, '\\s+')}\\b`, 'gi'); let m; while ((m = g.exec(raw))) out.push({ c, i: m.index, end: m.index + m[0].length }); return out; })
+    .sort((x, y) => x.i - y.i).map(h => {
+      const before = raw.slice(Math.max(0, h.i - 40), h.i), after = raw.slice(h.end, h.end + 40);
+      const dropped = /\b(?:not|instead of|rather than|no longer|isn'?t|never|swap|replace)\s+(?:(?:to|from|in|for|the|it|deliver(?:ing)?|send(?:ing)?|ship(?:ping)?|collect(?:ing)?)\s+){0,2}$/i.test(before)
+        || new RegExp(`^\\s*(?:to|→|->|for|with)\\s+(?:the\\s+)?(?:${alt(own)})\\b`, 'i').test(after);
+      const asOther = own === EUS ? new RegExp(`${WANT_ORG}\\s+(?:the\\s+)?$`, 'i').test(before) || (/\bfrom\s+$/i.test(before) && /^\s*instead\b/i.test(after)) : new RegExp(`${WANT_DEST}\\s+(?:the\\s+)?$`, 'i').test(before);
+      return { ...h, dropped, wrongEnd: !dropped && asOther };
+    });
+  const destAll = hitsOf(EUS, EUS), orgAll = hitsOf(UKS, UKS);
+  const destKept = destAll.filter(h => !h.dropped && !h.wrongEnd && DESTS.includes(h.c)), orgKept = orgAll.filter(h => !h.dropped && !h.wrongEnd && ORIGIN_CITIES.includes(h.c));
+  if (destKept.length) P.booking.destCity = destKept[destKept.length - 1].c;
+  if (orgKept.length) P.booking.originCity = orgKept[orgKept.length - 1].c;
+  const stays = (label, v) => (v ? ` For now ${label} stays ${v}.` : '');
+  const keepD = P.booking.destCity ? '' : stays('Deliver to', b0.destCity), keepO = P.booking.originCity ? '' : stays('Collect from', b0.originCity);
+  const curDest = P.booking.destCity || b0.destCity, curOrg = P.booking.originCity || b0.originCity;
+  const uniq = a => [...new Set(a)];
+  const unusedDest = uniq(destKept.filter(h => h.c !== curDest).map(h => h.c)), unusedOrg = uniq(orgKept.filter(h => h.c !== curOrg).map(h => h.c));
+  if (unusedDest.length) P.notes.push(`You mentioned ${unusedDest.join(' and ')} too — I've used ${curDest} for Deliver to. Say “deliver to ${unusedDest[0]}” if that's the one.`);
+  if (unusedOrg.length) P.notes.push(`You mentioned ${unusedOrg.join(' and ')} too — I've used ${curOrg} for Collect from. Say “collect from ${unusedOrg[0]}” if that's the one.`);
+  uniq(destAll.filter(h => !h.dropped && !h.wrongEnd && !DESTS.includes(h.c)).map(h => h.c)).forEach(c => { const ctry = OTHER_DEST[c.toLowerCase()]; P.notes.push(`${c} isn't on a carrier route. In ${ctry} we deliver to ${DESTS.filter(k => CITY_COUNTRY[k] === ctry).join(' or ')} — which is closest?${keepD}`); P.suggestCountry = ctry; });
+  uniq(orgAll.filter(h => !h.dropped && !h.wrongEnd && !ORIGIN_CITIES.includes(h.c)).map(h => h.c)).forEach(c => P.notes.push(`We collect from ${ORIGIN_CITIES.join(', ')} only — not ${c}. Which of those is nearest?${keepO}`));
+  uniq(orgAll.filter(h => h.wrongEnd).map(h => h.c)).forEach(c => P.notes.push(`${c} is in the UK, so it can only be where we collect from — we deliver to ${DESTS.join(', ')}.${keepD}`));
+  uniq(destAll.filter(h => h.wrongEnd).map(h => h.c)).forEach(c => P.notes.push(`${c} isn't in the UK — we collect from ${ORIGIN_CITIES.join(', ')} only.${keepO}`));
+  // A place we don't know at all, asked for as the new delivery city or collection point ("make it Madrid not Paris").
+  const NOT_PLACE = /^(?:it|its|that|this|them|there|here|you|the|one|two|three|some|more|less|fewer|cheaper|cheapest|faster|fastest|quicker|quickest|balanced|reliable|carrier|road|pallets?|cartons?|boxes|tomorrow|today|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next|warehouses?|business|office|shop|store|amazon|customers?|clients?|address|depot|site|instead|please|now|then|asap|ready|priority|economy|standard|express|our|my|your|their|his|her|we|be|is|from|to|but|and|or|of|in|for|with|not|actually|sorry)$/i;
+  const named = [...EUS, ...UKS].map(x => x.toLowerCase());
+  const unknownPlace = (re, dest) => {
+    const g = new RegExp(re.source, 'gi'); let m;
+    while ((m = g.exec(raw))) {
+      const w = m[1].trim();
+      if (NOT_PLACE.test(w.split(/\s+/)[0]) || named.includes(w.toLowerCase()) || normCountry(w) || OTHER_COUNTRIES.includes(w.toLowerCase())) continue;
+      P.notes.push(dest ? `I can't deliver to ${titleCase(w)} — we deliver to ${DESTS.join(', ')}.${keepD}` : `I can't collect from ${titleCase(w)} — we collect from ${ORIGIN_CITIES.join(', ')}.${keepO}`); return true;
+    }
+    return false;
+  };
+  const WORD = "([A-Za-z][A-Za-z'-]{2,}(?:\\s+(?!(?:instead|not|rather|please|to|from|but)\\b)[A-Za-z][A-Za-z'-]+)?)", END = '(?=\\s*(?:instead\\b|not\\b|rather\\b|please\\b|[,.;!?]|$))';
+  if (!P.booking.destCity) {
+    unknownPlace(new RegExp(`\\b${WORD}\\s*,?\\s+(?:not|instead of|rather than)\\s+(?:to\\s+)?(?:${alt(EUS)})\\b`, 'i'), true)
+      || unknownPlace(new RegExp(`\\bnot\\s+(?:to\\s+)?(?:${alt(EUS)})\\s*[,;–—-]?\\s*(?:but\\s+)?(?:to\\s+)?${WORD}${END}`, 'i'), true)
+      || unknownPlace(new RegExp(`\\b(?:${WANT_DEST}|switch(?:\\s+it)?\\s+to|change\\s+it\\s+to)\\s+(?:the\\s+)?${WORD}${END}`, 'i'), true);
+  }
+  if (!P.booking.originCity) {
+    unknownPlace(new RegExp(`\\b${WORD}\\s*,?\\s+(?:not|instead of|rather than)\\s+(?:from\\s+)?(?:${alt(UKS)})\\b`, 'i'), false)
+      || unknownPlace(new RegExp(`\\b(?:${WANT_ORG}|from)\\s+${WORD}\\s+instead\\b`, 'i'), false);
+  }
+  // "not Paris" with nothing in its place
+  if (!P.booking.destCity && b0.destCity && destAll.some(h => h.dropped && h.c === b0.destCity) && !P.notes.length) P.notes.push(`Noted — not ${b0.destCity}. Which city should it go to instead? We deliver to ${DESTS.join(', ')}.`);
+  if (!P.booking.originCity && b0.originCity && orgAll.some(h => h.dropped && h.c === b0.originCity) && !P.notes.length) P.notes.push(`Noted — not ${b0.originCity}. Where should we collect it from instead? We collect from ${ORIGIN_CITIES.join(', ')}.`);
+  for (const c of OTHER_COUNTRIES) if (new RegExp(`\\b(?:to|make it)\\s+(?:the\\s+)?${c}\\b`, 'i').test(low)) P.notes.push(`Shipping to ${titleCase(c)} isn't available — routes run from the UK to Germany, France or the Netherlands.${keepD}`);
   if (!P.booking.destCity) { const m = /\b(?:to|into|in|for)\s+(?:the\s+)?(germany|france|netherlands|holland)\b/i.exec(raw); if (m) P.booking.destCountry = normCountry(m[1]); }
 
   // Destination type
@@ -2232,18 +2345,22 @@ function parseMessage(text, st, today) {
     if (p) { P.booking.priority = p; if (!('carrierOverride' in P.booking)) P.booking.carrierOverride = null; }
   }
 
-  // Seller name
+  // Seller name. A labelled name ("seller: Acme", "business name Acme Ltd") is trusted even as one word; elsewhere a name
+  // needs two words or a company word. A lone fragment ("Sell", "Seller", "Ltd") is never taken as the name.
   {
     const cands = [];
     const NAME = "((?:[A-Z][\\w&'-]*|&)(?:\\s+(?:[A-Z][\\w&'-]*|&|and|of|the))*)";
     const pats = [new RegExp(`\\b(?:[Cc]ompany|[Bb]usiness|[Ss]eller|[Bb]rand|[Ss]hop)(?:\\s+name)?\\s+is\\s+${NAME}`), new RegExp(`\\b(?:[Oo]n behalf of|[Tt]his is|[Ww]e are|[Ww]e're|[Ii]'?m|I am|[Ii]t's|[Ss]eller is)\\s+(?:[A-Z][a-z]+\\s+from\\s+)?${NAME}`), new RegExp(`\\bfrom\\s+${NAME}`)];
     for (const re of pats) { const m = re.exec(raw); if (m) cands.push(m[1].trim()); }
-    const bad = c => !c || ORIGIN_CITIES.concat(Object.keys(CITY_COUNTRY)).some(x => x.toLowerCase() === c.toLowerCase()) || normCountry(c) || /^(I|We|Hi|Hello|Carrier|Road|HS|The|Amazon|UK|EU|GBP|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$/i.test(c) || /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/.test(c) && c.split(' ').length === 1;
+    const bad = c => !c || junkSeller(c) || ORIGIN_CITIES.concat(Object.keys(CITY_COUNTRY)).some(x => x.toLowerCase() === c.toLowerCase()) || normCountry(c) || /^(I|We|Hi|Hello|Carrier|Road|HS|The|Amazon|UK|EU|GBP|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$/i.test(c) || /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/.test(c) && c.split(' ').length === 1;
     let pick = null;
+    const label = sellerLabel(raw);
     const mFrom = /\b(?:i'?m|I am|this is)\s+[A-Z][a-z]+\s+from\s+((?:[A-Z][\w&'-]*|&)(?:\s+(?:[A-Z][\w&'-]*|&|and|of|the))*)/.exec(raw);
-    if (mFrom && !bad(mFrom[1].trim())) pick = mFrom[1].trim();
+    if (label && !bad(label)) pick = label;
+    else if (mFrom && !bad(mFrom[1].trim())) pick = mFrom[1].trim();
     else pick = cands.find(c => !bad(c) && (c.split(/\s+/).length > 1 || /ltd|limited|co\b|goods|trading|supplies|store|shop/i.test(c))) || null;
     if (pick) P.booking.seller = pick.replace(/[.,]+$/, '').replace(/\s+(?:in|based|and)$/i, '');
+    else if (label) P.sellerJunk = label;
   }
 
   // "don't know" answers to the pending question
@@ -2265,7 +2382,10 @@ function parseMessage(text, st, today) {
     if (f === 'destType' && !P.booking.destType) { const v = normDestType(raw); if (v) P.booking.destType = v; }
     if (f === 'appointment' && !P.booking.appointment) { if (/^\s*(y|yes|yep|yeah|yup|booked|it is|we have|done|sure)\b/i.test(raw)) P.booking.appointment = 'Yes'; else if (/^\s*(n|no|nope|not yet|nah|we don'?t|haven'?t)\b/i.test(raw)) P.booking.appointment = 'No'; }
     if (f === 'priority' && !P.booking.priority) { const v = normPriority(raw); if (v) { P.booking.priority = v; P.booking.carrierOverride = null; } }
-    if (f === 'seller' && !P.booking.seller) { const v = raw.trim().replace(/^(?:it'?s|we are|we're|i'?m|the seller is|seller is|company is|our company is|this is)\s+/i, '').replace(/[.!]+$/, ''); if (v && v.length <= 80) P.booking.seller = v; }
+    if (f === 'seller' && !P.booking.seller && !P.intents.length) {
+      const v = raw.trim().replace(/^(?:it'?s|we are|we're|i'?m|this is|it'?s called|we'?re called)\s+/i, '').replace(SELLER_LABEL, '').replace(/[.!]+$/, '').trim();
+      if (v && v.length <= 80 && !junkSeller(v)) P.booking.seller = v; else if (!P.sellerJunk) P.sellerJunk = v || raw.trim();
+    }
     if (f === 'items' && !segs.length && !items.length && !pending.length && !Object.keys(P.booking).length && !P.palletsDelta) { const v = raw.trim().replace(/^(?:we(?:'re| are)? (?:sending|shipping)|sending|shipping|it'?s|they'?re)\s+/i, '').replace(/[.!]+$/, ''); if (v && !/^\d+$/.test(v) && v.length <= 80 && !dunno) pending.push({ ref: 'new', fields: { description: titleCase(v.charAt(0)) + v.slice(1) } }); }
   }
   P.items = pending.filter(p => Object.keys(p.fields).length);
@@ -2435,6 +2555,7 @@ function turn(stIn, text, today) {
   reply.changes = applyPatch(st, P);
   if (P.material && st.booking.items[P.material.item]) { const it = st.booking.items[P.material.item]; it.materialAsked = true; if (P.material.value) { it.material = P.material.value; reply.notes.push(`Noted: ${it.description} — ${P.material.value}.`); } }
   P.hsUnknown.forEach(i => { const it = st.booking.items[i]; if (!it || it.hs) return; const h = hsSuggestFor(it), what = h && (h.label || PF.hsShort((PF.hsLookup(h.codes[0]) || {}).desc)); reply.notes.push(h && h.level === 'hs6' ? `No problem. For “${it.description}” the suggested HS code is ${h.codes[0]} (${what}). Say “use ${h.codes[0]}” to accept it — worth a quick check on the UK Trade Tariff. Until then R-01 stays red.` : h ? `No problem. For “${it.description}” the code is probably one of ${h.codes.slice(0, 4).join(', ')}. Say “use” and the one that fits — check it on the UK Trade Tariff. Until then R-01 stays red.` : `No problem — I couldn’t suggest a code for “${it.description}”. Look it up on the UK Trade Tariff (trade-tariff.service.gov.uk); until then R-01 stays red.`); });
+  if (P.sellerJunk && !P.booking.seller) reply.notes.push(`“${P.sellerJunk}” doesn't look like a business name, so I haven't used it. What name should go on the paperwork as the seller?`);
   reply.derived = deriveItems(st.booking);
   const miss = missing(st);
   if (miss.length) {
@@ -2786,6 +2907,34 @@ function runTests(PF, CHAT) {
     T('Conversation', 'HS question offers the suggested code as a tap option', () => { const { s } = talk(['500 scented candles at £4 each, 20 per carton, 0.3kg each, made in India, from Leeds to Paris']); return expect(s.pending.field === 'hs' && s.pending.chips[0] === 'Use 340600' && /340600/.test(s.pending.q), s.pending.q); });
     T('Conversation', 'Tapping “Use 340600” fills the HS code', () => { const { s } = talk(['500 scented candles at £4 each, 20 per carton, 0.3kg each, made in India, from Leeds to Paris', 'Use 340600']); return expect(s.booking.items[0].hs === '340600'); });
     T('Conversation', '“Don’t know” → suggestion offered; “use 340600” later accepts it', () => { const a = talk(['500 scented candles at £4 each, 20 per carton, 0.3kg each, made in India, from Leeds to Paris', "don't know"]); const b = talk(['500 scented candles at £4 each, 20 per carton, 0.3kg each, made in India, from Leeds to Paris', "don't know", 'use 340600']); return expect(a.r.notes.some(n => /340600/.test(n)) && b.s.booking.items[0].hs === '340600' && !b.s.booking.items[0].hsUnknown); });
+    // Corrections to where it goes and where it is collected from
+    const LP = '500 scented candles at £4 each from Leeds to Paris';
+    const PROD = "actually make it lyon not paris. we're Wick & Co btw. 24 per carton, 0.4kg each, made in UK";
+    const dest = (msgs) => { const t = talk(msgs); return { d: t.s.booking.destCity, o: t.s.booking.originCity, notes: t.r.notes, changes: t.r.changes }; };
+    T('Corrections', '“make it lyon not paris” (with other details) moves Deliver to from Paris to Lyon and says so', () => { const { s, r } = talk([LP, PROD]); return expect(s.booking.destCity === 'Lyon' && r.changes.some(c => c.field === 'destCity' && c.from === 'Paris' && c.to === 'Lyon') && s.booking.seller === 'Wick & Co' && s.booking.items[0].upc === 24, [s.booking.destCity, s.booking.seller]); });
+    T('Corrections', '“not paris, lyon” → Lyon', () => expect(dest([LP, 'not paris, lyon']).d === 'Lyon'));
+    T('Corrections', '“Lyon instead of Paris please” → Lyon', () => expect(dest([LP, 'Lyon instead of Paris please']).d === 'Lyon'));
+    T('Corrections', '“change destination to Amsterdam” → Amsterdam, Netherlands', () => { const { s } = talk([LP, 'change destination to Amsterdam']); return expect(s.booking.destCity === 'Amsterdam' && s.booking.destCountry === 'Netherlands'); });
+    T('Corrections', '“switch to Berlin” and “from Paris to Hamburg” change the destination', () => expect(dest([LP, 'switch to Berlin']).d === 'Berlin' && dest([LP, 'change it from Paris to Hamburg']).d === 'Hamburg'));
+    T('Corrections', '“deliver to Munich instead” keeps Paris and says so', () => { const x = dest([LP, 'deliver to Munich instead']); return expect(x.d === 'Paris' && x.notes.some(n => /Munich isn't on a carrier route/.test(n) && /stays Paris/.test(n)), x.notes); });
+    T('Corrections', '“make it Madrid not Paris” (a city we don’t know) keeps Paris and says so', () => { const x = dest([LP, 'make it Madrid not Paris']); return expect(x.d === 'Paris' && x.notes.some(n => /can't deliver to Madrid/.test(n) && /stays Paris/.test(n)), x.notes); });
+    T('Corrections', '“deliver to Leeds instead” (a UK city) keeps Paris and Leeds stays the collection point', () => { const x = dest([LP, 'deliver to Leeds instead']); return expect(x.d === 'Paris' && x.o === 'Leeds' && x.notes.some(n => /Leeds is in the UK/.test(n)), x.notes); });
+    T('Corrections', '“from Manchester instead of Leeds” → Collect from Manchester (not the first city in the list)', () => expect(dest([LP, 'from Manchester instead of Leeds']).o === 'Manchester' && dest([LP.replace('Leeds', 'London'), 'collect from Leeds, not London']).o === 'Leeds'));
+    T('Corrections', '“collect from Glasgow instead” keeps Leeds and says so', () => { const x = dest([LP, 'collect from Glasgow instead']); return expect(x.o === 'Leeds' && x.notes.some(n => /not Glasgow/.test(n) && /stays Leeds/.test(n)), x.notes); });
+    T('Corrections', '“collect from Paris instead” is not read as a new destination', () => { const x = dest([LP.replace('to Paris', 'to Berlin'), 'collect from Paris instead']); return expect(x.d === 'Berlin' && x.o === 'Leeds' && x.notes.some(n => /Paris isn't in the UK/.test(n)), x); });
+    T('Corrections', 'Two delivery cities in one message → the last is used and the other is mentioned back', () => { const x = dest([LP, 'Paris or Lyon, Lyon I think']); return expect(x.d === 'Lyon' && x.notes.some(n => /mentioned Paris/.test(n)), x.notes); });
+    T('Corrections', '“not paris” on its own keeps Paris and asks where instead', () => { const x = dest([LP, 'not paris']); return expect(x.d === 'Paris' && x.notes.some(n => /not Paris\. Which city/.test(n)), x.notes); });
+    T('Corrections', '“switch to carrier B” and “make it the fastest” add no city notes', () => expect(!dest([LP, 'switch to carrier B']).notes.length && !dest([LP, 'make it the fastest']).notes.length));
+    // Seller names
+    const NOSELLER = FULL.replace("Hi, I'm Priya from Northfield Goods. ", '');
+    const seller = msg => talk([NOSELLER, msg]);
+    T('Seller', '“Seller: Acme Ltd”, “seller is Acme Trading”, “seller Acme” set the seller', () => expect(seller('Seller: Acme Ltd').s.booking.seller === 'Acme Ltd' && seller('seller is Acme Trading').s.booking.seller === 'Acme Trading' && seller('seller Acme').s.booking.seller === 'Acme', [seller('Seller: Acme Ltd').s.booking.seller, seller('seller Acme').s.booking.seller]));
+    T('Seller', '“business name Bright Candle” and “company Acme Ltd” set the seller', () => expect(seller('business name Bright Candle').s.booking.seller === 'Bright Candle' && seller('company Acme Ltd').s.booking.seller === 'Acme Ltd'));
+    T('Seller', 'A labelled seller in the first message is read too (“Seller: Acme Ltd, 3 pallets from Leeds to Paris”)', () => { const { s } = talk(['Seller: Acme Ltd, 3 pallets from Leeds to Paris']); return expect(s.booking.seller === 'Acme Ltd' && s.booking.pallets === 3 && s.booking.destCity === 'Paris', s.booking.seller); });
+    T('Seller', 'A plain name answering the seller question still sets it (“Acme”)', () => expect(seller('Acme').s.booking.seller === 'Acme' && seller('Thread & Co').s.booking.seller === 'Thread & Co'));
+    T('Seller', '“Sell” or “Seller” on its own is not taken as the name; the bot says so and asks again', () => { const a = seller('Sell'), b = seller('Seller'); return expect(a.s.booking.seller == null && b.s.booking.seller == null && a.r.notes.some(n => /doesn't look like a business name/.test(n)) && a.s.pending.field === 'seller', [a.s.booking.seller, b.s.booking.seller]); });
+    T('Seller', '“what’s wrong?” while the seller is asked is not taken as the name', () => expect(seller("what's wrong?").s.booking.seller == null));
+    T('Seller', '“the seller pays duty” and “business address” are not names', () => { const { s } = talk(['the seller pays duty, ship to a Business Address in Lyon']); return expect(s.booking.seller == null && s.booking.destType === 'Business address', s.booking.seller); });
     T('Conversation', '“start over” resets everything', () => { const { s } = talk([FULL, 'start over']); return expect(!s.complete && s.booking.items.length === 0); });
   }
   return results;
@@ -3459,13 +3608,13 @@ function readExpected(sheets) {
   return m;
 }
 async function loadFiles(files) {
-  const all = []; const names = [];
+  const all = []; const names = []; const bufs = [];
   for (const f of files) {
     const buf = await f.arrayBuffer(); const csv = /\.(csv|tsv|txt)$/i.test(f.name);
-    try { const wb = XLSX.read(buf, { type: 'array', raw: csv, cellDates: false }); all.push(...sheetsFromWorkbook(wb, f.name)); names.push(f.name); }
+    try { const wb = XLSX.read(buf, { type: 'array', raw: csv, cellDates: false }); all.push(...sheetsFromWorkbook(wb, f.name)); names.push(f.name); bufs.push(buf); }
     catch (e) { showFileError(`Couldn’t read ${f.name}: ${e.message}. Upload .xlsx, .xls or .csv.`); return; }
   }
-  ingest(all, names.join(' + '), { save: true });
+  ingest(all, names.join(' + '), { save: true, fp: await fileFingerprint(bufs, $('#skip-ex').checked) });
 }
 function ingest(sheets, name, opts = {}) {
   const v = views.file;
@@ -3474,13 +3623,9 @@ function ingest(sheets, name, opts = {}) {
   v.data.baseline = v.data.bookings.map(b => PF.evaluate(b, { today: PF.todayISO() }));
   v.ov = {}; v.rv = {}; v.openRow = null; v.filter = 'All';
   clearAudit('file');
-  delete saveState.file;
+  delete saveState.file; pending.file.clear();
   // Uploaded files go to the shared bookings list; the built-in sample and demo files don't.
-  if (opts.save && v.data.bookings.length) {
-    const uploadId = uuid();
-    v.data.db = v.data.bookings.map(() => ({ id: uuid(), source: 'file', upload_id: uploadId, file_name: name }));
-    saveRows(v, v.data.bookings.map((b, i) => i));
-  }
+  if (opts.save && v.data.bookings.length) { v.data.fp = opts.fp || null; firstSave(v, v.data); }
   renderFile(v);
 }
 function showFileError(msg) { $('#file-results').innerHTML = ''; $('#file-results').append(h('p', { class: 'note-warn' }, msg)); }
@@ -3543,7 +3688,7 @@ function outcomesPanel() {
   const totals = h('div', { class: 'oc-totals' },
     h('div', { class: 'oc-tot stake' }, h('span', null, 'At stake as uploaded'), h('strong', null, '£', totStakeLo, h('em', null, '–£'), totStakeHi)),
     h('div', { class: 'oc-tot saved' }, h('span', null, 'Avoided by fixes so far'), h('strong', null, '£', totSavedLo, h('em', null, '–£'), totSavedHi)));
-  const costEmpty = h('p', { class: 'oc-empty' }, 'Type what one stopped booking costs you at each stage (storage, re-delivery, demurrage, a missed slot). No default figures.');
+  const costEmpty = h('p', { class: 'oc-empty' }, h('b', null, 'Add your costs per stop to see an estimate.'), ' Type what one stopped booking costs you at each stage (storage, re-delivery, demurrage, a missed slot). No default figures.');
   // Data table (the accessible view of every chart)
   const tbody = h('tbody');
   const tip = h('div', { class: 'oc-tip', hidden: true });
@@ -3581,7 +3726,8 @@ function outcomesPanel() {
     });
     const fmt = v => PF.fmtNum(v, 0);
     tween(totStakeLo, stake.low, fmt); tween(totStakeHi, stake.high, fmt); tween(totSavedLo, saved.low, fmt); tween(totSavedHi, saved.high, fmt);
-    el.classList.toggle('no-cost', !stake.lines.length);
+    // £ ranges only once a figure is typed; until then the totals are hidden behind the empty state, never shown as £0–£0.
+    el.classList.toggle('no-cost', !PF.OUTCOME_STAGES.some(st => ['low', 'high'].some(k => PF.isNum(PF.num((costs[st.id] || {})[k])))));
   }
   function update(rows) {
     o = PF.outcomes(fileData.baseline, rows.map(r => r.ev));
@@ -3765,26 +3911,75 @@ function savedRow(meta, original, ov) {
   return { id: meta.id, source: meta.source, booking_id: String(cur.id || '(no ID)').trim().slice(0, 80) || '(no ID)', upload_id: meta.upload_id || null, file_name: meta.file_name || null,
     original, overrides: ov || null, current: cur, status: ev.status, carrier: c ? c.carrier : null, cost: c ? c.cost : null };
 }
-async function postRows(rows) {
+// mode 'insert' adds only rows that aren't saved yet and returns the saved fixes of the ones that are; the default updates them.
+async function postRows(rows, mode) {
+  const out = { saved: 0, existing: [] };
   for (let i = 0; i < rows.length; i += 500) {
-    const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookings: rows.slice(i, i + 500) }) });
-    if (!r.ok) { let msg = `error ${r.status}`; try { msg = (await r.json()).error || msg; } catch (e) {} throw new Error(msg); }
+    const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(mode ? { mode, bookings: rows.slice(i, i + 500) } : { bookings: rows.slice(i, i + 500) }) });
+    let res = null; try { res = await r.json(); } catch (e) {}
+    if (!r.ok) throw new Error((res && res.error) || `error ${r.status}`);
+    out.saved += (res && res.saved) || 0; if (res && Array.isArray(res.existing)) out.existing.push(...res.existing);
   }
+  return out;
+}
+// The same file uploaded again gets the same row ids: a SHA-256 of its bytes (and the example-row setting, which shifts
+// the rows), then one id per row from that. Without crypto.subtle (an insecure page) ids are random, as before.
+const hex = buf => [...new Uint8Array(buf)].map(x => x.toString(16).padStart(2, '0')).join('');
+async function fileFingerprint(bufs, skipExample) {
+  try { if (!crypto.subtle) return null; const hs = await Promise.all(bufs.map(b => crypto.subtle.digest('SHA-256', b))); return `${hs.map(hex).join('+')}:${skipExample ? 'skip-example' : 'keep-example'}`; }
+  catch (e) { return null; }
+}
+async function uuidOf(text) {
+  const b = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)));
+  b[6] = (b[6] & 0x0f) | 0x80; b[8] = (b[8] & 0x3f) | 0x80; // UUID version 8 (custom), RFC 4122 variant
+  const x = hex(b.slice(0, 16)); return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20)}`;
+}
+// First save of an uploaded file. Rows already on Bookings are left alone, and the fixes saved there are brought into
+// this view (with any fix made here since on top), so uploading the file again never undoes them.
+function firstSave(v, data) {
+  data.needsFirst = false;
+  data.firstSave = (async () => {
+    if (!data.db) {
+      const fp = data.fp, upload = fp ? await uuidOf(fp) : uuid();
+      const ids = await Promise.all(data.bookings.map((b, i) => (fp ? uuidOf(`${fp}:${i}`) : uuid())));
+      data.db = ids.map(id => ({ id, source: 'file', upload_id: upload, file_name: data.name }));
+    }
+    let res;
+    try { res = await track('file', postRows(data.bookings.map((b, i) => savedRow(data.db[i], b, v.ov[i])), 'insert')); }
+    catch (e) { data.needsFirst = true; return; }
+    if (v.data !== data) return;
+    const at = Object.fromEntries(data.db.map((d, i) => [d.id, i])); let fixes = 0;
+    res.existing.forEach(x => {
+      const i = at[x.id]; if (i == null || !x.overrides) return;
+      const mine = v.ov[i]; fixes++;
+      v.ov[i] = mine ? { patch: { ...(x.overrides.patch || {}), ...(mine.patch || {}) }, items: { ...(x.overrides.items || {}), ...(mine.items || {}) } } : x.overrides;
+      if (mine) pending.file.add(i);
+    });
+    const old = res.existing.length;
+    setSave('file', 'saved', !old ? '' : !res.saved ? `Already saved on Bookings${fixes ? ` · showing the fixes saved there` : ''}` : `Saved ${res.saved} new · ${old} already on Bookings`);
+    if (fixes && (location.hash.slice(1) || 'chat') === 'file') renderFile(v);
+  })();
 }
 // Save state per list ('file', 'bookings', 'chat'), shown next to the list's name.
 const saveState = {};
 function saveNote(key) { const st = saveState[key.name || key]; return h('span', { class: 'savenote s-' + (st ? st.state : 'none'), 'data-save': key.name || key }, saveText(st)); }
-function saveText(st) { return !st ? '' : st.state === 'saving' ? '· Saving…' : st.state === 'saved' ? '· Saved to Bookings' : `· Not saved (${st.msg}) — it will try again with your next change`; }
+function saveText(st) { return !st ? '' : st.state === 'saving' ? '· Saving…' : st.state === 'saved' ? `· ${st.msg || 'Saved to Bookings'}` : `· Not saved (${st.msg}) — it will try again with your next change`; }
 function setSave(key, state, msg) { saveState[key] = { state, msg }; document.querySelectorAll(`[data-save="${key}"]`).forEach(el => { el.className = 'savenote s-' + state; el.textContent = saveText(saveState[key]); }); }
 function track(key, p) { inflight.add(p); setSave(key, 'saving'); p.then(() => setSave(key, 'saved'), e => setSave(key, 'error', e.message || 'offline')).finally(() => inflight.delete(p)); return p; }
 // Rows of a list waiting to be saved; changes within 300 ms go up together. Rows that failed stay queued for the next try.
 const pending = { file: new Set(), bookings: new Set() }; const timers = {};
 function saveRows(v, idxs) {
-  if (!v.data || !v.data.db) return;
+  if (!v.data || !(v.data.db || v.data.firstSave)) return;
   idxs.forEach(i => pending[v.name].add(i));
   clearTimeout(timers[v.name]);
-  timers[v.name] = setTimeout(() => {
-    const data = v.data, idx = [...pending[v.name]]; pending[v.name].clear();
+  timers[v.name] = setTimeout(async () => {
+    const data = v.data;
+    // A file's fixes wait for its first save (which may bring in fixes already saved on Bookings); a failed one is retried first.
+    if (data.needsFirst) firstSave(v, data);
+    if (data.firstSave) await data.firstSave;
+    if (v.data !== data || !data.db || data.needsFirst) return;
+    const idx = [...pending[v.name]]; pending[v.name].clear();
+    if (!idx.length) return;
     const rows = idx.map(i => savedRow(data.db[i], data.bookings[i], v.ov[i]));
     track(v.name, postRows(rows)).catch(() => { if (v.data === data) idx.forEach(i => pending[v.name].add(i)); });
   }, 300);

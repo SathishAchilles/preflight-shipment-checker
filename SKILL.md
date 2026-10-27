@@ -15,7 +15,7 @@ A single self-contained HTML app (no backend, no login) that:
 |---|---|
 | `scripts/engine.js` | Pure rule engine: normalisers, file parsing, R-01…R-10, data issues, carrier ranking, ETA, confirmation text. Node + browser. |
 | `scripts/chat.js` | Deterministic language parser + slot filling + change tracking (`turn(state, text, today)`). |
-| `scripts/tests.js` | 111 automated tests (shared by Node and the in-app Test tab). |
+| `scripts/tests.js` | 350 automated tests (shared by Node and the in-app Test tab). |
 | `scripts/app.js`, `scripts/shell.html` | UI (chat, file upload, report, export, rules, tests). |
 | `scripts/build.py` | Inlines everything + sample workbook (base64) into `preflight.html`. |
 | `scripts/make_testdata.py` | Builds the 20-booking test workbook from the official template. |
@@ -28,9 +28,10 @@ A single self-contained HTML app (no backend, no login) that:
 | `scripts/snapshot_tariff.py` | Downloads the DBT tariff and HMRC search references and loads them into Supabase as one snapshot version (`--dry-run`, `--if-new`, `--replace`). |
 | `scripts/export_hs_index.py` | Writes `assets/hs_index.json` from the current snapshot's views, after self-checks. |
 | `scripts/dbenv.py` | `psql` connection from `DATABASE_MIGRATION_URL` (environment or gitignored `.env.local`); `--check`, `--apply file.sql`. Never prints the URL. |
-| `api/bookings.js` | Vercel function for the shared bookings list: `GET` lists the newest 500, `POST` saves or updates up to 1,000 rows (validated, 64 KB per booking). Connects as `preflight_app` through `BOOKINGS_DATABASE_URL`. |
+| `api/bookings.js` | Vercel function for the shared bookings list: `GET` lists the newest 500, `POST` saves or updates up to 1,000 rows (validated, 64 KB per booking; `mode: insert` adds only new rows, for a file's first save). Only accepts JSON from the app's own origins, which is not authentication. Connects as `preflight_app` through `BOOKINGS_DATABASE_URL`. |
 | `scripts/db/002_bookings.sql` | `preflight.bookings` table (RLS on; `preflight_app` may select, insert and update it, nothing else). |
 | `scripts/dev_server.js` | Local stand-in for Vercel: serves `scripts/preflight.html` and runs `api/bookings.js` (`node scripts/dev_server.js 8787`). |
+| `scripts/api_tests.js` | Checks `api/bookings.js` with a stubbed database: origin, content type, validation, insert and upsert modes (`node scripts/api_tests.js`). |
 
 ## Workflow
 1. `cd scripts && npm i xlsx@0.18.5` (Node verification only).

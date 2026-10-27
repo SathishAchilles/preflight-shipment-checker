@@ -1,4 +1,4 @@
-// Local stand-in for Vercel: serves scripts/preflight.html at / and runs api/bookings.js at /api/bookings.
+// Local stand-in for Vercel: serves scripts/preflight.html at /, assets/og-image.png at /og-image.png and runs api/bookings.js at /api/bookings.
 // Usage: node scripts/dev_server.js [port]   (BOOKINGS_DATABASE_URL from the environment or .env.local)
 const http = require('http'), fs = require('fs'), path = require('path');
 const ROOT = path.join(__dirname, '..');
@@ -27,6 +27,10 @@ http.createServer((req, res) => {
       api(req, wrap(res));
     });
     return;
+  }
+  if (req.url.split('?')[0] === '/og-image.png') {
+    res.setHeader('Content-Type', 'image/png');
+    return fs.createReadStream(path.join(ROOT, 'assets', 'og-image.png')).pipe(res);
   }
   fs.readFile(path.join(__dirname, 'preflight.html'), (err, buf) => {
     if (err) { res.statusCode = 500; return res.end('Run python3 build.py first.'); }

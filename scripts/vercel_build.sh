@@ -1,6 +1,6 @@
 #!/bin/sh
 # Vercel build (design D8): load a new tariff version into Supabase if DBT has one,
-# export the HS index from Supabase, build preflight.html and publish it as dist/index.html.
+# export the HS index from Supabase, build preflight.html and publish it as dist/index.html (plus the og:image).
 # HS_ALLOW_STALE=1 deploys with the committed assets/hs_index.json when the database step fails.
 set -eu
 cd "$(dirname "$0")/.."
@@ -17,4 +17,5 @@ fi
 (cd scripts && python3 build.py >/dev/null)
 mkdir -p dist
 cp scripts/preflight.html dist/index.html
+cp assets/og-image.png dist/og-image.png   # social preview (og:image), source in design/og-image.html
 echo "built dist/index.html ($(wc -c < dist/index.html | tr -d ' ') bytes)"
