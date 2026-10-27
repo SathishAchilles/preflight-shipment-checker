@@ -137,7 +137,7 @@ function setHero(tab, ev, label) {
 }
 // Example bookings for the hero until the user has one of their own: the demo set, one route after another.
 // Each route draws in, holds for HOLD_MS, then the next one starts; hover or focus on the map pauses it.
-const HOLD_MS = 750;
+const HOLD_MS = 500;
 let demoHeroList, demoHeroIdx = 0, demoHeroTimer = null, heroPaused = false;
 function demoHeroes() {
   if (demoHeroList) return demoHeroList;
