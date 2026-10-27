@@ -3726,9 +3726,12 @@ function outcomesPanel() {
     });
     const fmt = v => PF.fmtNum(v, 0);
     tween(totStakeLo, stake.low, fmt); tween(totStakeHi, stake.high, fmt); tween(totSavedLo, saved.low, fmt); tween(totSavedHi, saved.high, fmt);
-    // £ ranges only once a figure is typed; until then the totals are hidden behind the empty state, never shown as £0–£0.
-    el.classList.toggle('no-cost', !PF.OUTCOME_STAGES.some(st => ['low', 'high'].some(k => PF.isNum(PF.num((costs[st.id] || {})[k])))));
+    el.classList.toggle('no-cost', !hasCost());
   }
+  // £ ranges only once a figure is typed; until then the totals are hidden behind the empty state, never shown as £0–£0.
+  // Set now too, because the first paint waits until the panel scrolls into view.
+  const hasCost = () => PF.OUTCOME_STAGES.some(st => ['low', 'high'].some(k => PF.isNum(PF.num((costs[st.id] || {})[k]))));
+  el.classList.toggle('no-cost', !hasCost());
   function update(rows) {
     o = PF.outcomes(fileData.baseline, rows.map(r => r.ev));
     const apply = () => {
