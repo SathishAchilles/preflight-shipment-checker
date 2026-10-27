@@ -656,6 +656,7 @@ function ingest(sheets, name, opts = {}) {
   v.data.baseline = v.data.bookings.map(b => PF.evaluate(b, { today: PF.todayISO() }));
   v.ov = {}; v.rv = {}; v.openRow = null; v.filter = 'All';
   clearAudit('file');
+  delete saveState.file;
   // Uploaded files go to the shared bookings list; the built-in sample and demo files don't.
   if (opts.save && v.data.bookings.length) {
     const uploadId = uuid();
@@ -858,12 +859,12 @@ function renderView(v) {
   const rows = v.name === 'bookings' && v.source !== 'All' ? all.filter(r => src(r) === v.source) : all;
   const cnt = s => rows.filter(r => r.ev.status === s).length;
   out.append(h('div', { class: 'file-head' },
-    h('div', null, h('h2', null, v.name === 'bookings' ? `${rows.length} saved booking${rows.length === 1 ? '' : 's'}` : `${rows.length} booking${rows.length === 1 ? '' : 's'} checked`), h('p', { class: 'muted' }, fileData.name, ' ', saveNote(v))),
+    h('div', null, h('h2', null, v.name === 'bookings' ? `${rows.length} saved booking${rows.length === 1 ? '' : 's'}` : `${rows.length} booking${rows.length === 1 ? '' : 's'} checked`), h('p', { class: 'muted' }, fileData.name, ' ', v.name !== 'bookings' && !all.length ? h('span', { class: 'savenote s-error' }, '· No bookings identified') : saveNote(v))),
     h('div', { class: 'filters', role: 'group', 'aria-label': 'Filter by status' }, ['All', 'Red', 'Amber', 'Green', 'Review', 'Advisory'].map(s => h('button', { type: 'button', class: 'fbtn f-' + s, 'aria-pressed': String(v.filter === s), onclick: () => { v.filter = s; renderView(v); } }, `${({ All: 'All', Red: 'Must fix', Amber: 'Check', Green: 'Ready', Review: 'To check', Advisory: 'Good to know' })[s]} ${s === 'All' ? rows.length : s === 'Review' ? rows.filter(r => toReview(r, v)).length : s === 'Advisory' ? rows.filter(r => r.ev.advisories.length + (r.ev.warnings || []).length).length : cnt(s)}`))),
     h('button', { class: 'btn', type: 'button', onclick: () => { V = v; exportResults(); }, disabled: !rows.length }, 'Export results (.xlsx)')));
   if (v.name === 'bookings') out.append(h('div', { class: 'filters srcf', role: 'group', 'aria-label': 'Filter by source' }, ['All', 'chat', 'file'].map(s => h('button', { type: 'button', class: 'fbtn', 'aria-pressed': String(v.source === s), onclick: () => { v.source = s; v.openRow = null; renderView(v); } }, `${SRC_LABEL[s]} ${s === 'All' ? all.length : all.filter(r => src(r) === s).length}`))));
   fileData.notices.forEach(n => out.append(h('p', { class: 'notice n-' + n.level }, n.text)));
-  if (!all.length) { out.append(h('p', { class: 'note-warn' }, v.name === 'bookings' ? 'No saved bookings yet. Book by chat or upload a sheet, and they appear here.' : 'No bookings found under the header row.')); return; }
+  if (!all.length) { out.append(h('p', { class: 'note-warn' }, v.name === 'bookings' ? 'No saved bookings yet. Book by chat or upload a sheet, and they appear here.' : 'No bookings identified. Check the file has a Bookings sheet with at least one booking under its header row.')); return; }
   out.append(outcomesPanel().update(all));
   const exp = null; // expected-results comparison is not shown in the simplified UI
   { const openR = rows.find(r2 => r2.i === v.openRow); setHero(v.name, openR ? openR.ev : null, openR ? openR.ev.b.id : ''); }

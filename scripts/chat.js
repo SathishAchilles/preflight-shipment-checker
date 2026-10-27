@@ -175,11 +175,14 @@ function parseMessage(text, st, today) {
     const sub = { w: S.w.slice(z.start, z.end) };
     const t = target(z); const F = t ? t.fields : null;
     const set = (k, v) => { if (F && v != null && !(typeof v === 'number' && isNaN(v))) F[k] = v; };
+    // A carton size in the same message means "N boxes of <goods>" counts the units sold, not the cartons.
+    const perCarton = /\bper\s*(?:carton|ctn)\b|\bunits?\s+per\s+(?:carton|box|case)\b/i.test(sub.w);
     takeAll(sub, /(\d[\d,]*)\s*(?:cartons|boxes|cases|ctns)\s*(?:of|with|x|each holding|holding)\s*(\d+)\b/i, m => { set('cartons', num(m[1])); set('upc', num(m[2])); });
     takeAll(sub, /\b(?:units?\s+per\s+(?:carton|box|case)|per carton)\s*(?:is|are|:|=|of|to)?\s*(\d+)\b/i, m => set('upc', num(m[1])));
     takeAll(sub, /\b(\d+)\s*(?:units?\s+|pcs\s+|pieces\s+|items\s+|[a-z]+\s+)?(?:per|a|an|in each|in a|to a|to each|\/)\s*(?:carton|box|case|ctn)\b/i, m => set('upc', num(m[1])));
     takeAll(sub, /\b(?:cartons?|boxes|box|cases?)\s+(?:of|hold|holds|contain|contains|with)\s+(\d+)\b/i, m => set('upc', num(m[1])));
     takeAll(sub, /\b(?:packed|pack(?:ed)?\s+in)\s+(\d+)s\b/i, m => set('upc', num(m[1])));
+    takeAll(sub, /\b(\d[\d,]*)\s*(?:boxes|packs|cases)\s+of\s+(?=[a-z])/i, m => { if (!perCarton) return false; set('qty', num(m[1])); });
     takeAll(sub, /\b(\d[\d,]*)\s*(?:cartons|boxes|cases|ctns)\b/i, m => set('cartons', num(m[1])));
     takeAll(sub, /\b(?:cartons|boxes)\s*(?:is|are|:|=|to|should be)\s*(\d[\d,]*)\b/i, m => set('cartons', num(m[1])));
     takeAll(sub, new RegExp(`${UW}\\s*(?:each|per\\s*(?!pallet)(?:unit|item|piece|pc|[a-z]+)|apiece|a piece|ea\\b)`, 'i'), m => set('unitWeight', toKg(num(m[1]), m[2])));
