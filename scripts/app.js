@@ -135,22 +135,37 @@ function setHero(tab, ev, label) {
   const cur = location.hash.slice(1) || 'chat';
   if (cur === tab || (tab === 'chat' && cur !== 'file' && cur !== 'bookings')) renderHero(heroFor[tab]);
 }
-// Example booking for the hero until the user has one of their own (first demo booking, a clean London → Berlin run).
-let demoHeroCache;
-function demoHero() {
-  if (demoHeroCache !== undefined) return demoHeroCache;
-  demoHeroCache = null;
+// Example bookings for the hero until the user has one of their own: the demo set, one route after another.
+// Each route draws in, holds for HOLD_MS, then the next one starts; hover or focus on the map pauses it.
+const HOLD_MS = 1500;
+let demoHeroList, demoHeroIdx = 0, demoHeroTimer = null, heroPaused = false;
+function demoHeroes() {
+  if (demoHeroList) return demoHeroList;
+  demoHeroList = [];
   try {
     if (window.DEMO_XLSX_B64 && window.XLSX) {
       const wb = XLSX.read(demoBuf(), { type: 'array' });
-      const b = PF.parseSheets(sheetsFromWorkbook(wb, 'demo')).bookings[0];
-      if (b) { const ev = PF.evaluate(b, { today: PF.todayISO() }); demoHeroCache = { ev, label: `Example · ${ev.b.seller}`, example: true }; }
+      demoHeroList = PF.parseSheets(sheetsFromWorkbook(wb, 'demo')).bookings.map(b => PF.evaluate(b, { today: PF.todayISO() }))
+        .filter(ev => CITY_XY[ev.b.originCity] && CITY_XY[ev.b.destCity]).map(ev => ({ ev, label: `Example · ${ev.b.seller}`, example: true }));
     }
-  } catch (e) { demoHeroCache = null; }
-  return demoHeroCache;
+  } catch (e) { demoHeroList = []; }
+  return demoHeroList;
+}
+function demoHero() { const l = demoHeroes(); return l.length ? l[demoHeroIdx % l.length] : null; }
+function nextDemoHero(box) {
+  clearTimeout(demoHeroTimer);
+  if (demoHeroes().length < 2) return;
+  const line = box.querySelector('.live');
+  const drawMs = line && !calm() ? 2200 : 0;  // matches .hmap .live: 2s draw after a .2s delay
+  demoHeroTimer = setTimeout(function tick() {
+    if (heroPaused || document.hidden) { demoHeroTimer = setTimeout(tick, 500); return; }
+    demoHeroIdx++; renderHero(null);
+  }, drawMs + HOLD_MS);
 }
 function renderHero(x) {
   const box = $('#hero-map'); if (!box) return;
+  const example = !x;
+  clearTimeout(demoHeroTimer);
   if (!x) x = demoHero();
   const ev = x && x.ev, b = ev && ev.b, rec = ev && ev.rec;
   const o = b && CITY_XY[b.originCity], d = b && CITY_XY[b.destCity];
@@ -182,6 +197,14 @@ function renderHero(x) {
     chips.length ? h('div', { class: 'hchips' }, chips) : null,
     h('div', { class: 'rec' }, recLine));
   box.innerHTML = ''; box.append(h('div', { html: svg }), card);
+  // Only real bookings are announced; the rotating example stays quiet for screen readers.
+  box.setAttribute('aria-live', example ? 'off' : 'polite');
+  if (!box.dataset.pauseWired) {
+    box.dataset.pauseWired = '1';
+    box.addEventListener('mouseenter', () => { heroPaused = true; }); box.addEventListener('mouseleave', () => { heroPaused = false; });
+    box.addEventListener('focusin', () => { heroPaused = true; }); box.addEventListener('focusout', () => { heroPaused = false; });
+  }
+  if (example) nextDemoHero(box);
 }
 const advKind = a => (/^Possible dangerous goods/.test(a) ? 'Dangerous goods?' : /^By weight/.test(a) ? 'Pallets' : /HS|commodity/i.test(a) ? 'Customs code' : /weight|pallet/i.test(a) ? 'Weight' : 'Note');
 
